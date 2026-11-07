@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+.env
+.env.*
+!.env.example
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+# Go build artifacts
+/bin/
+*.test
+coverage.out
+# Local credentials and agent workspace configuration
+.aws/
+.codex/
+.agents/
