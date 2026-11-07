@@ -12,13 +12,21 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+  dynamodb:
+    image: amazon/dynamodb-local:latest@sha256:6ada631ec7aa5fc83446855eb17233e3dad184fec47477e8140c6c569cfe0c86
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports: ["127.0.0.1:8001:8000"]
   api:
     build: .
     environment:
       DATABASE_URL: postgresql://app:app@db:5432/analytics
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-postgres}
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
       db: {condition: service_healthy}
+      dynamodb: {condition: service_started}
   redis:
     image: redis:7-alpine
     ports: ["127.0.0.1:6379:6379"]

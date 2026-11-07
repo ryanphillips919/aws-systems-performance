@@ -1,0 +1,114 @@
+{
+  "dataset_items": 10000,
+  "user": "user001",
+  "code": "seed000001",
+  "page_limit": 0,
+  "capacity_note": "DynamoDB Local capacity is simulated and not suitable for AWS cost estimates",
+  "runs": [
+    {
+      "iteration": 1,
+      "UserScan": {
+        "method": "user_scan",
+        "elapsed_ms": 55.21,
+        "returned": 100,
+        "examined": 10000,
+        "pages": 2,
+        "reported_capacity_units": 147
+      },
+      "UserQuery": {
+        "method": "user_query",
+        "elapsed_ms": 5.647,
+        "returned": 100,
+        "examined": 100,
+        "pages": 1,
+        "reported_capacity_units": 1.5
+      },
+      "CodeScan": {
+        "method": "code_scan",
+        "elapsed_ms": 56.647,
+        "returned": 1,
+        "examined": 10000,
+        "pages": 2,
+        "reported_capacity_units": 147
+      },
+      "CodeGet": {
+        "method": "code_get",
+        "elapsed_ms": 1.752,
+        "returned": 1,
+        "examined": 1,
+        "pages": 1,
+        "reported_capacity_units": 0.5
+      }
+    },
+    {
+      "iteration": 2,
+      "UserScan": {
+        "method": "user_scan",
+        "elapsed_ms": 61.968,
+        "returned": 100,
+        "examined": 10000,
+        "pages": 2,
+        "reported_capacity_units": 147
+      },
+      "UserQuery": {
+        "method": "user_query",
+        "elapsed_ms": 4.237,
+        "returned": 100,
+        "examined": 100,
+        "pages": 1,
+        "reported_capacity_units": 1.5
+      },
+      "CodeScan": {
+        "method": "code_scan",
+        "elapsed_ms": 54.846,
+        "returned": 1,
+        "examined": 10000,
+        "pages": 2,
+        "reported_capacity_units": 147
+      },
+      "CodeGet": {
+        "method": "code_get",
+        "elapsed_ms": 2.256,
+        "returned": 1,
+        "examined": 1,
+        "pages": 1,
+        "reported_capacity_units": 0.5
+      }
+    },
+    {
+      "iteration": 3,
+      "UserScan": {
+        "method": "user_scan",
+        "elapsed_ms": 122.803,
+        "returned": 100,
+        "examined": 10000,
+        "pages": 2,
+        "reported_capacity_units": 147
+      },
+      "UserQuery": {
+        "method": "user_query",
+        "elapsed_ms": 5.48,
+        "returned": 100,
+        "examined": 100,
+        "pages": 1,
+        "reported_capacity_units": 1.5
+      },
+      "CodeScan": {
+        "method": "code_scan",
+        "elapsed_ms": 108.433,
+        "returned": 1,
+        "examined": 10000,
+        "pages": 2,
+        "reported_capacity_units": 147
+      },
+      "CodeGet": {
+        "method": "code_get",
+        "elapsed_ms": 1.613,
+        "returned": 1,
+        "examined": 1,
+        "pages": 1,
+        "reported_capacity_units": 0.5
+      }
+    }
+  ]
+}

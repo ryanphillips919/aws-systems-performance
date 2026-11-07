@@ -155,3 +155,105 @@ func TestHealthFailure(t *testing.T) {
 type brokenStore struct{ *memoryStore }
 
 func (brokenStore) Health(context.Context) error { return fmt.Errorf("unavailable") }
+
+func TestRedirectFlow(t *testing.T) {
+	m := &memoryStore{links: map[string]store.Link{}}
+	h, err := NewWithBaseURL(m, "https://short.example/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := request(h, http.MethodPost, "/links", `{"userId":"alice","destinationUrl":"https://example.com/path?q=1"}`)
+	var result struct {
+		store.Link
+		ShortURL string `json:"shortUrl"`
+	}
+	if err := json.Unmarshal(created.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if created.Code != 201 || result.ShortURL != "https://short.example/u/"+result.Code {
+		t.Fatalf("create: %d %+v", created.Code, result)
+	}
+	for i := 1; i <= 2; i++ {
+		w := request(h, http.MethodGet, "/u/"+result.Code, "")
+		if w.Code != http.StatusFound || w.Header().Get("Location") != "https://example.com/path?q=1" {
+			t.Fatalf("redirect: %d %q", w.Code, w.Header().Get("Location"))
+		}
+		if got := m.links[result.Code].ClickCount; got != int64(i) {
+			t.Fatalf("click count = %d, want %d", got, i)
+		}
+	}
+	w := request(h, http.MethodGet, "/links/"+result.Code, "")
+	if w.Code != 200 || m.links[result.Code].ClickCount != 2 {
+		t.Fatalf("GET changed count: %s", w.Body)
+	}
+	w = request(h, http.MethodHead, "/u/"+result.Code, "")
+	if w.Code != 405 || m.links[result.Code].ClickCount != 2 {
+		t.Fatalf("HEAD changed count: %d", w.Code)
+	}
+	w = request(h, http.MethodGet, "/u/missing", "")
+	if w.Code != 404 || w.Header().Get("Location") != "" {
+		t.Fatalf("missing: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	metrics := request(h, "GET", "/metrics", "").Body.String()
+	if !strings.Contains(metrics, `http_requests_total{method="GET",route="/u/{code}",status="302"} 2`) || strings.Contains(metrics, result.Code) {
+		t.Fatalf("unexpected metrics: %s", metrics)
+	}
+}
+
+type failedClickStore struct{ *memoryStore }
+
+func (failedClickStore) Click(context.Context, string) (store.Link, error) {
+	return store.Link{}, fmt.Errorf("database unavailable")
+}
+
+func TestRedirectStorageFailure(t *testing.T) {
+	h := New(failedClickStore{&memoryStore{links: map[string]store.Link{}}})
+	w := request(h, "GET", "/u/some-code", "")
+	if w.Code != 500 || w.Header().Get("Location") != "" {
+		t.Fatalf("got %d, Location %q", w.Code, w.Header().Get("Location"))
+	}
+}
+
+func TestPublicBaseURL(t *testing.T) {
+	m := &memoryStore{links: map[string]store.Link{}}
+	for _, base := range []string{"relative", "ftp://example.com", "http://user:pass@example.com", "https://example.com/path", "https://example.com?q=1", "https://example.com/#fragment"} {
+		if _, err := NewWithBaseURL(m, base); err == nil {
+			t.Errorf("accepted invalid public base %q", base)
+		}
+	}
+	h, err := NewWithBaseURL(m, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := request(h, "POST", "/links", `{"userId":"alice","destinationUrl":"https://example.com"}`)
+	var result struct {
+		Code     string `json:"code"`
+		ShortURL string `json:"shortUrl"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.ShortURL != DefaultPublicBaseURL+"/u/"+result.Code {
+		t.Fatal(result.ShortURL)
+	}
+}
+
+type unsupportedPopularStore struct{ *memoryStore }
+
+func (unsupportedPopularStore) Popular(context.Context, int) ([]store.Link, error) {
+	return nil, store.ErrUnsupported
+}
+func TestBackendReportingAndUnsupportedPopular(t *testing.T) {
+	h, err := NewWithBackend(unsupportedPopularStore{&memoryStore{links: map[string]store.Link{}}}, "", "dynamodb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := request(h, "GET", "/health", "")
+	if !strings.Contains(w.Body.String(), `"storage":"dynamodb"`) {
+		t.Fatal(w.Body)
+	}
+	w = request(h, "GET", "/analytics/popular", "")
+	if w.Code != 501 {
+		t.Fatal(w.Code)
+	}
+}

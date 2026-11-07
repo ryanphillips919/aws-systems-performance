@@ -7,6 +7,7 @@ import (
 )
 
 var ErrNotFound = errors.New("link not found")
+var ErrUnsupported = errors.New("operation unsupported by storage backend")
 
 type Link struct {
 	Code           string    `json:"code"`

@@ -21,14 +21,31 @@ import (
 )
 
 type API struct {
-	store    store.Store
-	requests *prometheus.CounterVec
-	latency  *prometheus.HistogramVec
+	store         store.Store
+	requests      *prometheus.CounterVec
+	latency       *prometheus.HistogramVec
+	publicBaseURL string
+	backend       string
 }
 
-func New(s store.Store) http.Handler {
+const DefaultPublicBaseURL = "http://localhost:8000"
+
+// NewWithBaseURL validates the configured public origin instead of trusting request headers.
+func NewWithBaseURL(s store.Store, base string) (http.Handler, error) {
+	return NewWithBackend(s, base, "postgresql")
+}
+
+func NewWithBackend(s store.Store, base, backend string) (http.Handler, error) {
+	if base == "" {
+		base = DefaultPublicBaseURL
+	}
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return nil, fmt.Errorf("PUBLIC_BASE_URL must be an http(s) origin without credentials, path, query, or fragment")
+	}
+	base = strings.TrimSuffix(base, "/")
 	registry := prometheus.NewRegistry()
-	a := &API{store: s,
+	a := &API{store: s, publicBaseURL: base, backend: backend,
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "http_requests_total", Help: "HTTP requests"}, []string{"method", "route", "status"}),
 		latency:  prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "http_request_duration_seconds", Help: "HTTP request duration in seconds", Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10}}, []string{"method", "route"}),
 	}
@@ -36,12 +53,18 @@ func New(s store.Store) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /links", a.create)
 	mux.HandleFunc("GET /links/{code}", a.get)
+	mux.HandleFunc("GET /u/{code}", a.redirect)
 	mux.HandleFunc("GET /users/{userId}/links", a.list)
 	mux.HandleFunc("POST /links/{code}/click", a.click)
 	mux.HandleFunc("GET /analytics/popular", a.popular)
 	mux.HandleFunc("GET /health", a.health)
 	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
-	return a.instrument(mux)
+	return a.instrument(mux), nil
+}
+
+func New(s store.Store) http.Handler {
+	h, _ := NewWithBaseURL(s, DefaultPublicBaseURL)
+	return h
 }
 
 type statusWriter struct {
@@ -113,6 +136,10 @@ func handleError(w http.ResponseWriter, err error) {
 		writeError(w, 404, "link not found")
 		return
 	}
+	if errors.Is(err, store.ErrUnsupported) {
+		writeError(w, http.StatusNotImplemented, "operation not supported by storage backend")
+		return
+	}
 	log.Printf("storage error: %v", err)
 	writeError(w, 500, "internal server error")
 }
@@ -147,7 +174,25 @@ func (a *API) create(w http.ResponseWriter, r *http.Request) {
 		handleError(w, err)
 		return
 	}
-	respond(w, 201, link)
+	respond(w, 201, struct {
+		store.Link
+		ShortURL string `json:"shortUrl"`
+	}{link, a.publicBaseURL + "/u/" + url.PathEscape(link.Code)})
+}
+
+func (a *API) redirect(w http.ResponseWriter, r *http.Request) {
+	// ServeMux also matches HEAD to GET; only an actual GET counts as a click.
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	link, err := a.store.Click(r.Context(), r.PathValue("code"))
+	if err != nil {
+		handleError(w, err)
+		return
+	}
+	http.Redirect(w, r, link.DestinationURL, http.StatusFound)
 }
 func (a *API) get(w http.ResponseWriter, r *http.Request) {
 	link, err := a.store.Get(r.Context(), r.PathValue("code"))
@@ -208,5 +253,5 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 503, "database unavailable")
 		return
 	}
-	respond(w, 200, map[string]string{"status": "ok", "storage": "postgresql"})
+	respond(w, 200, map[string]string{"status": "ok", "storage": a.backend})
 }
