@@ -1,0 +1,32 @@
+services:
+  api:
+    environment:
+      STORAGE_BACKEND: sharded-postgres
+      SHARD_IDS: shard1,shard2,shard3
+      SHARD_DATABASE_URLS: postgresql://app:app@shard1:5432/analytics,postgresql://app:app@shard2:5432/analytics,postgresql://app:app@shard3:5432/analytics
+      SHARD_STRATEGY: ${SHARD_STRATEGY:-consistent}
+      SHARD_VNODES: ${SHARD_VNODES:-128}
+      SHARD_PARTITIONS: ${SHARD_PARTITIONS:-256}
+      SHARD_MAP_VERSION: ${SHARD_MAP_VERSION:-v1}
+    depends_on:
+      shard1: {condition: service_healthy}
+      shard2: {condition: service_healthy}
+      shard3: {condition: service_healthy}
+  shard1: &shard
+    image: postgres:16
+    environment: {POSTGRES_DB: analytics, POSTGRES_USER: app, POSTGRES_PASSWORD: app}
+    ports: ["127.0.0.1:5441:5432"]
+    volumes: ["shard1data:/var/lib/postgresql/data"]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U app -d analytics"], interval: 2s, timeout: 3s, retries: 30}
+  shard2:
+    <<: *shard
+    ports: ["127.0.0.1:5442:5432"]
+    volumes: ["shard2data:/var/lib/postgresql/data"]
+  shard3:
+    <<: *shard
+    ports: ["127.0.0.1:5443:5432"]
+    volumes: ["shard3data:/var/lib/postgresql/data"]
+volumes:
+  shard1data:
+  shard2data:
+  shard3data:

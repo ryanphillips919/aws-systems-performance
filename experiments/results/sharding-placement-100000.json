@@ -1,0 +1,354 @@
+{
+  "keys": 100000,
+  "seed": 42,
+  "partitions": 256,
+  "note": "logical ownership only; no database rows are migrated",
+  "scenarios": [
+    {
+      "strategy": "modulo",
+      "change": "add shard4",
+      "keys_moved": 74755,
+      "percent_moved": 74.755,
+      "before": {
+        "counts": {
+          "shard1": 33173,
+          "shard2": 33349,
+          "shard3": 33478
+        },
+        "min": 33173,
+        "max": 33478,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.0043400000000000105
+      },
+      "after": {
+        "counts": {
+          "shard1": 25086,
+          "shard2": 24760,
+          "shard3": 25140,
+          "shard4": 25014
+        },
+        "min": 24760,
+        "max": 25140,
+        "average": 25000,
+        "max_over_average_minus_one": 0.005600000000000049
+      }
+    },
+    {
+      "strategy": "modulo",
+      "change": "remove shard3",
+      "keys_moved": 66536,
+      "percent_moved": 66.536,
+      "before": {
+        "counts": {
+          "shard1": 33173,
+          "shard2": 33349,
+          "shard3": 33478
+        },
+        "min": 33173,
+        "max": 33478,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.0043400000000000105
+      },
+      "after": {
+        "counts": {
+          "shard1": 50226,
+          "shard2": 49774
+        },
+        "min": 49774,
+        "max": 50226,
+        "average": 50000,
+        "max_over_average_minus_one": 0.0045200000000000795
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "add shard4",
+      "vnodes": 1,
+      "keys_moved": 31249,
+      "percent_moved": 31.249,
+      "before": {
+        "counts": {
+          "shard1": 62839,
+          "shard2": 697,
+          "shard3": 36464
+        },
+        "min": 697,
+        "max": 62839,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.8851699999999998
+      },
+      "after": {
+        "counts": {
+          "shard1": 62839,
+          "shard2": 697,
+          "shard3": 5215,
+          "shard4": 31249
+        },
+        "min": 697,
+        "max": 62839,
+        "average": 25000,
+        "max_over_average_minus_one": 1.51356
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "remove shard3",
+      "vnodes": 1,
+      "keys_moved": 36464,
+      "percent_moved": 36.464,
+      "before": {
+        "counts": {
+          "shard1": 62839,
+          "shard2": 697,
+          "shard3": 36464
+        },
+        "min": 697,
+        "max": 62839,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.8851699999999998
+      },
+      "after": {
+        "counts": {
+          "shard1": 62839,
+          "shard2": 37161
+        },
+        "min": 37161,
+        "max": 62839,
+        "average": 50000,
+        "max_over_average_minus_one": 0.25678
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "add shard4",
+      "vnodes": 16,
+      "keys_moved": 15984,
+      "percent_moved": 15.984,
+      "before": {
+        "counts": {
+          "shard1": 34767,
+          "shard2": 37519,
+          "shard3": 27714
+        },
+        "min": 27714,
+        "max": 37519,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.12556999999999996
+      },
+      "after": {
+        "counts": {
+          "shard1": 29199,
+          "shard2": 33422,
+          "shard3": 21395,
+          "shard4": 15984
+        },
+        "min": 15984,
+        "max": 33422,
+        "average": 25000,
+        "max_over_average_minus_one": 0.33688000000000007
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "remove shard3",
+      "vnodes": 16,
+      "keys_moved": 27714,
+      "percent_moved": 27.714,
+      "before": {
+        "counts": {
+          "shard1": 34767,
+          "shard2": 37519,
+          "shard3": 27714
+        },
+        "min": 27714,
+        "max": 37519,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.12556999999999996
+      },
+      "after": {
+        "counts": {
+          "shard1": 48881,
+          "shard2": 51119
+        },
+        "min": 48881,
+        "max": 51119,
+        "average": 50000,
+        "max_over_average_minus_one": 0.022380000000000067
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "add shard4",
+      "vnodes": 128,
+      "keys_moved": 23195,
+      "percent_moved": 23.195,
+      "before": {
+        "counts": {
+          "shard1": 35044,
+          "shard2": 32791,
+          "shard3": 32165
+        },
+        "min": 32165,
+        "max": 35044,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.05132000000000003
+      },
+      "after": {
+        "counts": {
+          "shard1": 27842,
+          "shard2": 26072,
+          "shard3": 22891,
+          "shard4": 23195
+        },
+        "min": 22891,
+        "max": 27842,
+        "average": 25000,
+        "max_over_average_minus_one": 0.11368
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "remove shard3",
+      "vnodes": 128,
+      "keys_moved": 32165,
+      "percent_moved": 32.165,
+      "before": {
+        "counts": {
+          "shard1": 35044,
+          "shard2": 32791,
+          "shard3": 32165
+        },
+        "min": 32165,
+        "max": 35044,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.05132000000000003
+      },
+      "after": {
+        "counts": {
+          "shard1": 51697,
+          "shard2": 48303
+        },
+        "min": 48303,
+        "max": 51697,
+        "average": 50000,
+        "max_over_average_minus_one": 0.03394000000000008
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "add shard4",
+      "vnodes": 512,
+      "keys_moved": 23465,
+      "percent_moved": 23.465,
+      "before": {
+        "counts": {
+          "shard1": 33259,
+          "shard2": 32911,
+          "shard3": 33830
+        },
+        "min": 32911,
+        "max": 33830,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.014899999999999913
+      },
+      "after": {
+        "counts": {
+          "shard1": 26990,
+          "shard2": 25349,
+          "shard3": 24196,
+          "shard4": 23465
+        },
+        "min": 23465,
+        "max": 26990,
+        "average": 25000,
+        "max_over_average_minus_one": 0.0795999999999999
+      }
+    },
+    {
+      "strategy": "consistent",
+      "change": "remove shard3",
+      "vnodes": 512,
+      "keys_moved": 33830,
+      "percent_moved": 33.83,
+      "before": {
+        "counts": {
+          "shard1": 33259,
+          "shard2": 32911,
+          "shard3": 33830
+        },
+        "min": 32911,
+        "max": 33830,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.014899999999999913
+      },
+      "after": {
+        "counts": {
+          "shard1": 50507,
+          "shard2": 49493
+        },
+        "min": 49493,
+        "max": 50507,
+        "average": 50000,
+        "max_over_average_minus_one": 0.010140000000000038
+      }
+    },
+    {
+      "strategy": "partition",
+      "change": "add shard4; move selected partitions",
+      "keys_moved": 8479,
+      "percent_moved": 8.479,
+      "before": {
+        "counts": {
+          "shard1": 33350,
+          "shard2": 33158,
+          "shard3": 33492
+        },
+        "min": 33158,
+        "max": 33492,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.0047599999999998754
+      },
+      "after": {
+        "counts": {
+          "shard1": 24871,
+          "shard2": 33158,
+          "shard3": 33492,
+          "shard4": 8479
+        },
+        "min": 8479,
+        "max": 33492,
+        "average": 25000,
+        "max_over_average_minus_one": 0.33968
+      },
+      "partitions_moved": 22
+    },
+    {
+      "strategy": "partition",
+      "change": "remove shard3; reassign its partitions",
+      "keys_moved": 33492,
+      "percent_moved": 33.492,
+      "before": {
+        "counts": {
+          "shard1": 33350,
+          "shard2": 33158,
+          "shard3": 33492
+        },
+        "min": 33158,
+        "max": 33492,
+        "average": 33333.333333333336,
+        "max_over_average_minus_one": 0.0047599999999998754
+      },
+      "after": {
+        "counts": {
+          "shard1": 50483,
+          "shard2": 49517
+        },
+        "min": 49517,
+        "max": 50483,
+        "average": 50000,
+        "max_over_average_minus_one": 0.009660000000000002
+      },
+      "partitions_moved": 85
+    }
+  ]
+}

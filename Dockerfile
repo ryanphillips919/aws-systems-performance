@@ -4,7 +4,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -o /out/api ./cmd/api && CGO_ENABLED=0 go build -o /out/seed ./cmd/seed && CGO_ENABLED=0 go build -o /out/dynamolab ./cmd/dynamolab && CGO_ENABLED=0 go build -o /out/cachelab ./cmd/cachelab
+RUN CGO_ENABLED=0 go build -o /out/api ./cmd/api && CGO_ENABLED=0 go build -o /out/seed ./cmd/seed && CGO_ENABLED=0 go build -o /out/dynamolab ./cmd/dynamolab && CGO_ENABLED=0 go build -o /out/cachelab ./cmd/cachelab && CGO_ENABLED=0 go build -o /out/shardlab ./cmd/shardlab && CGO_ENABLED=0 go build -o /out/shardseed ./cmd/shardseed
 
 FROM alpine:3.21
 RUN addgroup -S app && adduser -S -G app app
@@ -13,5 +13,7 @@ COPY --from=build /out/api /usr/local/bin/api
 COPY --from=build /out/seed /usr/local/bin/seed
 COPY --from=build /out/dynamolab /usr/local/bin/dynamolab
 COPY --from=build /out/cachelab /usr/local/bin/cachelab
+COPY --from=build /out/shardlab /usr/local/bin/shardlab
+COPY --from=build /out/shardseed /usr/local/bin/shardseed
 EXPOSE 8000
 CMD ["api"]

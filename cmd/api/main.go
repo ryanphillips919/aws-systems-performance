@@ -15,6 +15,7 @@ import (
 	"aws-systems-performance/internal/cache"
 	"aws-systems-performance/internal/dynamolab"
 	"aws-systems-performance/internal/httpapi"
+	"aws-systems-performance/internal/sharding"
 	"aws-systems-performance/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -24,10 +25,10 @@ func backendName(raw string) (string, error) {
 	if raw == "" {
 		return "postgres", nil
 	}
-	if raw == "postgres" || raw == "dynamodb" {
+	if raw == "postgres" || raw == "dynamodb" || raw == "sharded-postgres" {
 		return raw, nil
 	}
-	return "", fmt.Errorf("unknown STORAGE_BACKEND %q (choose postgres or dynamodb)", raw)
+	return "", fmt.Errorf("unknown STORAGE_BACKEND %q (choose postgres, dynamodb, or sharded-postgres)", raw)
 }
 
 func boolEnv(key string, fallback bool) (bool, error) {
@@ -50,6 +51,7 @@ func main() {
 		log.Fatal(err)
 	}
 	var db store.Store
+	cacheNamespace := backend
 	switch backend {
 	case "postgres":
 		dsn := os.Getenv("DATABASE_URL")
@@ -66,6 +68,18 @@ func main() {
 			log.Fatalf("initialize postgres: %v", err)
 		}
 		db = p
+	case "sharded-postgres":
+		placement, urls, err := sharding.ConfigFromEnv(os.Getenv)
+		if err != nil {
+			log.Fatal(err)
+		}
+		sharded, closeShards, err := sharding.OpenPostgres(ctx, placement, urls)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer closeShards()
+		db = sharded
+		cacheNamespace = backend + ":" + placement.Fingerprint()[:16]
 	case "dynamodb":
 		d, err := dynamolab.New(dynamolab.DefaultTable)
 		if err != nil {
@@ -79,7 +93,7 @@ func main() {
 		}
 		db = d
 	default:
-		log.Fatalf("unknown STORAGE_BACKEND %q (choose postgres or dynamodb)", backend)
+		log.Fatalf("unknown STORAGE_BACKEND %q (choose postgres, dynamodb, or sharded-postgres)", backend)
 	}
 	enabled, err := boolEnv("CACHE_ENABLED", false)
 	if err != nil {
@@ -103,7 +117,7 @@ func main() {
 		}
 		client := redis.NewClient(&redis.Options{Addr: addr, DialTimeout: 150 * time.Millisecond, ReadTimeout: 150 * time.Millisecond, WriteTimeout: 150 * time.Millisecond, PoolTimeout: 200 * time.Millisecond, MaxRetries: -1, ContextTimeoutEnabled: true})
 		defer client.Close()
-		db = cache.New(db, client, time.Duration(ttlSeconds)*time.Second, backend, coalesce)
+		db = cache.New(db, client, time.Duration(ttlSeconds)*time.Second, cacheNamespace, coalesce)
 		log.Printf("Redis cache enabled; ttl=%ds coalescing=%t", ttlSeconds, coalesce)
 	}
 	label := backend

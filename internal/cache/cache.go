@@ -37,6 +37,9 @@ func New(backend store.Store, client *redis.Client, ttl time.Duration, namespace
 }
 func (c *Store) RegisterMetrics(reg prometheus.Registerer) {
 	reg.MustRegister(c.operations, c.latency, c.backendReads)
+	if instrumented, ok := c.backend.(interface{ RegisterMetrics(prometheus.Registerer) }); ok {
+		instrumented.RegisterMetrics(reg)
+	}
 }
 func (c *Store) Key(code string) (string, bool) {
 	if !validCode.MatchString(code) {
