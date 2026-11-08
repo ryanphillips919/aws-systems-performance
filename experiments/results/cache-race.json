@@ -1,0 +1,7 @@
+{
+  "backend_click_count": 1,
+  "cached_click_count": 0,
+  "mode": "race",
+  "note": "controlled in-memory source plus real Redis; old fill completes after invalidation",
+  "stale": true
+}

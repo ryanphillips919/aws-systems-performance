@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"crypto/rand"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -19,6 +20,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+//go:embed site/index.html
+var indexHTML []byte
 
 type API struct {
 	store         store.Store
@@ -50,7 +54,14 @@ func NewWithBackend(s store.Store, base, backend string) (http.Handler, error) {
 		latency:  prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "http_request_duration_seconds", Help: "HTTP request duration in seconds", Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10}}, []string{"method", "route"}),
 	}
 	registry.MustRegister(a.requests, a.latency)
+	if instrumented, ok := s.(interface{ RegisterMetrics(prometheus.Registerer) }); ok {
+		instrumented.RegisterMetrics(registry)
+	}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(indexHTML)
+	})
 	mux.HandleFunc("POST /links", a.create)
 	mux.HandleFunc("GET /links/{code}", a.get)
 	mux.HandleFunc("GET /u/{code}", a.redirect)

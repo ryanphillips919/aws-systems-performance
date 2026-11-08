@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Link Lab</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #182c28; background: #f5f6f2; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    .topbar { background: #fff; border-bottom: 1px solid #e3e9e2; }
+    .topbar-inner, main { max-width: 1120px; margin: 0 auto; padding-left: 32px; padding-right: 32px; }
+    .topbar-inner { min-height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 750; letter-spacing: -.04em; font-size: 20px; }
+    .brand-mark { display: grid; place-items: center; width: 35px; height: 35px; border-radius: 10px; color: white; background: #174d3c; font-size: 18px; }
+    .topbar-right { display: flex; align-items: center; gap: 17px; color: #73827a; font-size: 13px; }
+    .topbar-right a { color: #546b60; text-decoration: none; }
+    .status { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; }
+    .dot { width: 7px; height: 7px; background: #5ba579; border-radius: 50%; }
+    main { padding-top: 57px; padding-bottom: 80px; }
+    .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 11px; font-weight: 750; color: #6f8a78; margin: 0 0 13px; }
+    h1 { font-size: clamp(32px, 5vw, 43px); line-height: 1.08; letter-spacing: -.055em; margin: 0 0 12px; }
+    .subtitle { color: #738078; margin: 0; font-size: 15px; line-height: 1.6; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 22px; margin-top: 37px; align-items: start; }
+    .card { background: #fff; border: 1px solid #e3e9e2; border-radius: 14px; box-shadow: 0 3px 14px rgba(33, 58, 42, .025); }
+    .list-card { min-height: 350px; }
+    .card-header { padding: 23px 24px; border-bottom: 1px solid #edf0eb; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+    h2 { font-size: 16px; letter-spacing: -.02em; margin: 0 0 5px; }
+    .muted, .section-copy { color: #87958b; font-size: 12px; line-height: 1.5; margin: 0; }
+    .refresh { border: 1px solid #e1e8e0; background: #fff; color: #51675b; padding: 8px 11px; border-radius: 8px; font-weight: 600; font-size: 12px; cursor: pointer; }
+    button:hover { filter: brightness(.96); }
+    button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #91c6a5; outline-offset: 2px; }
+    .user-filter { display: flex; gap: 8px; align-items: end; padding: 19px 24px; border-bottom: 1px solid #edf0eb; }
+    .user-filter .field { flex: 1; }
+    label { display: block; font-size: 12px; font-weight: 700; color: #435b4d; margin-bottom: 8px; }
+    input { width: 100%; padding: 11px 12px; border: 1px solid #dce5dc; border-radius: 8px; font: inherit; font-size: 13px; color: #20382c; background: #fff; }
+    input::placeholder { color: #a7b2a9; }
+    .button { background: #184e3b; color: #fff; border: 0; border-radius: 8px; padding: 11px 14px; min-height: 40px; font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .button:disabled, .refresh:disabled { opacity: .65; cursor: wait; }
+    .links { padding: 0 24px; }
+    .link-row { display: flex; justify-content: space-between; gap: 18px; padding: 19px 0; border-bottom: 1px solid #edf0eb; }
+    .link-row:last-child { border: 0; }
+    .link-main { min-width: 0; }
+    .short-link { color: #215f48; font-size: 14px; font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+    .short-link:hover { text-decoration: underline; }
+    .destination { color: #819088; font-size: 12px; margin-top: 6px; overflow-wrap: anywhere; }
+    .link-meta { margin-top: 9px; color: #a1aba3; font-size: 11px; }
+    .clicks { flex-shrink: 0; align-self: center; text-align: right; }
+    .clicks strong { display: block; font-size: 17px; letter-spacing: -.03em; }
+    .clicks span { color: #9ba8a0; font-size: 11px; }
+    .empty { padding: 62px 18px; text-align: center; color: #7d8d82; font-size: 13px; line-height: 1.7; }
+    .empty strong { display: block; color: #40594a; font-size: 14px; }
+    .side-card { padding: 23px; }
+    .side-card .section-copy { margin-bottom: 22px; }
+    .side-card .field { margin-bottom: 17px; }
+    .side-card .button { width: 100%; }
+    .hint { font-size: 11px; line-height: 1.6; color: #9ba99e; margin: 17px 0 0; }
+    .notice { margin: 14px 24px 0; padding: 10px 12px; background: #f3f8f2; border-radius: 8px; color: #315f40; font-size: 12px; line-height: 1.5; }
+    .notice.error { background: #fff1ef; color: #9b463b; }
+    [hidden] { display: none !important; }
+    footer { margin-top: 25px; color: #9ba99f; font-size: 11px; line-height: 1.6; }
+    @media (max-width: 720px) { .topbar-inner, main { padding-left: 20px; padding-right: 20px; } main { padding-top: 38px; } .layout { grid-template-columns: 1fr; } .side-card { grid-row: 1; } .topbar-right a { display: none; } }
+  </style>
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">↗</span> Link Lab</div>
+    <div class="topbar-right"><a href="http://localhost:9090" target="_blank" rel="noopener noreferrer">Prometheus ↗</a><span class="status"><span class="dot" aria-hidden="true"></span><span id="backend">Checking storage…</span></span></div>
+  </div></header>
+  <main>
+    <p class="eyebrow">Your workspace</p>
+    <h1>Good links, all in one place.</h1>
+    <p class="subtitle">Create short links and keep an eye on where they go.</p>
+    <div class="layout">
+      <section class="card list-card" aria-labelledby="links-title">
+        <div class="card-header"><div><h2 id="links-title">Your links</h2><p class="muted">Newest first · up to 100 links</p></div><button id="refresh" class="refresh" type="button">↻ &nbsp;Refresh</button></div>
+        <form id="user-form" class="user-filter"><div class="field"><label for="user">User ID</label><input id="user" name="user" maxlength="200" value="alice" required></div><button class="button" type="submit">View links</button></form>
+        <div id="list-notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <div id="links" class="links" aria-live="polite"></div>
+      </section>
+      <aside class="card side-card">
+        <h2>Create a link</h2><p class="section-copy">Make a short, shareable URL in seconds.</p>
+        <form id="create-form"><div class="field"><label for="destination">Destination URL</label><input id="destination" type="url" placeholder="https://example.com" required></div><button id="create-button" class="button" type="submit">Create short link &nbsp;↗</button></form>
+        <p class="hint">Links are saved for the user ID entered in Your links. Open a short link to record a click.</p>
+        <div id="create-notice" class="notice" role="status" aria-live="polite" hidden style="margin: 14px 0 0"></div>
+      </aside>
+    </div>
+    <footer>Showing links for one user at a time. Try <strong>user001</strong> to explore the seeded data.</footer>
+  </main>
+  <script>
+    const user = document.querySelector('#user');
+    const list = document.querySelector('#links');
+    const listNotice = document.querySelector('#list-notice');
+    const createNotice = document.querySelector('#create-notice');
+    const createButton = document.querySelector('#create-button');
+    let selectedUser = user.value;
+    let requestNumber = 0;
+
+    function message(element, text, error = false) {
+      element.textContent = text;
+      element.classList.toggle('error', error);
+      element.hidden = !text;
+    }
+    function element(tag, className, text) {
+      const node = document.createElement(tag);
+      node.className = className;
+      node.textContent = text;
+      return node;
+    }
+    async function responseJSON(response) {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+      return data;
+    }
+    async function loadLinks() {
+      const currentRequest = ++requestNumber;
+      const currentUser = selectedUser;
+      message(listNotice, '');
+      list.replaceChildren(element('div', 'empty', 'Loading links…'));
+      try {
+        const links = await responseJSON(await fetch(`/users/${encodeURIComponent(currentUser)}/links?limit=100`));
+        if (currentRequest !== requestNumber) return;
+        list.replaceChildren();
+        if (!links.length) {
+          const empty = element('div', 'empty', 'Create one using the form, or try user001 for seeded links.');
+          empty.prepend(element('strong', '', 'No links for this user yet.'));
+          list.append(empty);
+          return;
+        }
+        for (const link of links) {
+          const row = element('article', 'link-row', '');
+          const main = element('div', 'link-main', '');
+          const short = element('a', 'short-link', `${location.host}/u/${link.code} ↗`);
+          short.href = `/u/${encodeURIComponent(link.code)}`;
+          short.target = '_blank'; short.rel = 'noopener noreferrer';
+          const date = new Date(link.createdAt);
+          main.append(short, element('div', 'destination', link.destinationUrl), element('div', 'link-meta', `Created ${Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString()}`));
+          const clicks = element('div', 'clicks', '');
+          clicks.append(element('strong', '', String(link.clickCount)), element('span', '', link.clickCount === 1 ? 'click' : 'clicks'));
+          row.append(main, clicks); list.append(row);
+        }
+      } catch (err) {
+        if (currentRequest !== requestNumber) return;
+        list.replaceChildren(); message(listNotice, `Could not load links: ${err.message}`, true);
+      }
+    }
+    document.querySelector('#user-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const value = user.value.trim();
+      if (!value) { user.setCustomValidity('Enter a user ID.'); user.reportValidity(); return; }
+      user.value = value; selectedUser = value; message(createNotice, ''); loadLinks();
+    });
+    user.addEventListener('input', () => user.setCustomValidity(''));
+    document.querySelector('#refresh').addEventListener('click', loadLinks);
+    document.querySelector('#create-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const destination = document.querySelector('#destination');
+      const owner = user.value.trim();
+      if (!owner) { user.setCustomValidity('Enter a user ID.'); user.reportValidity(); return; }
+      user.value = owner; selectedUser = owner;
+      createButton.disabled = true; message(createNotice, 'Creating link…');
+      try {
+        await responseJSON(await fetch('/links', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({userId: owner, destinationUrl: destination.value}) }));
+        destination.value = '';
+        message(createNotice, `Link created for ${owner}.`);
+        if (selectedUser === owner) await loadLinks();
+      } catch (err) { message(createNotice, `Could not create link: ${err.message}`, true); }
+      finally { createButton.disabled = false; }
+    });
+    fetch('/health').then(responseJSON).then(data => { document.querySelector('#backend').textContent = data.storage === 'dynamodb' ? 'DynamoDB Local' : 'PostgreSQL'; }).catch(() => { document.querySelector('#backend').textContent = 'Storage unavailable'; });
+    loadLinks();
+  </script>
+</body>
+</html>

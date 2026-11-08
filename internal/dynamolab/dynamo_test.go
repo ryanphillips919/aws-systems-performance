@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -123,4 +124,48 @@ func TestLocalIntegration(t *testing.T) {
 	if _, err = db.Popular(ctx, 10); !errors.Is(err, store.ErrUnsupported) {
 		t.Fatalf("popular: %v", err)
 	}
+}
+
+func TestWaitForActive(t *testing.T) {
+	mk := func(table types.TableStatus, index types.IndexStatus) *dynamodb.DescribeTableOutput {
+		return &dynamodb.DescribeTableOutput{Table: &types.TableDescription{TableStatus: table, GlobalSecondaryIndexes: []types.GlobalSecondaryIndexDescription{{IndexName: aws.String(Index), IndexStatus: index}}}}
+	}
+	t.Run("waits for both table and index", func(t *testing.T) {
+		states := []*dynamodb.DescribeTableOutput{mk(types.TableStatusCreating, types.IndexStatusCreating), mk(types.TableStatusActive, types.IndexStatusCreating), mk(types.TableStatusActive, types.IndexStatusActive)}
+		calls := 0
+		err := waitForActive(context.Background(), "test-table", time.Millisecond, func(context.Context) (*dynamodb.DescribeTableOutput, error) {
+			state := states[calls]
+			calls++
+			return state, nil
+		})
+		if err != nil || calls != 3 {
+			t.Fatalf("calls=%d error=%v", calls, err)
+		}
+	})
+	t.Run("cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		calls := 0
+		err := waitForActive(ctx, "test-table", time.Second, func(context.Context) (*dynamodb.DescribeTableOutput, error) { calls++; return nil, nil })
+		if !errors.Is(err, context.Canceled) || calls != 0 {
+			t.Fatalf("calls=%d error=%v", calls, err)
+		}
+	})
+	t.Run("timeout with state", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+		err := waitForActive(ctx, "test-table", time.Millisecond, func(context.Context) (*dynamodb.DescribeTableOutput, error) {
+			return mk(types.TableStatusActive, types.IndexStatusCreating), nil
+		})
+		if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "GSI=CREATING") {
+			t.Fatalf("error=%v", err)
+		}
+	})
+	t.Run("describe error", func(t *testing.T) {
+		sentinel := errors.New("describe failure")
+		err := waitForActive(context.Background(), "test-table", time.Millisecond, func(context.Context) (*dynamodb.DescribeTableOutput, error) { return nil, sentinel })
+		if !errors.Is(err, sentinel) {
+			t.Fatalf("error=%v", err)
+		}
+	})
 }

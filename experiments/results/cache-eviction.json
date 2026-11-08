@@ -1,0 +1,12 @@
+{
+  "evicted_keys_delta": 20,
+  "expired_keys_delta": 1,
+  "expired_ttl_key": true,
+  "keys_written": 201,
+  "long_ttl_keys_missing": 20,
+  "long_ttl_seconds": 300,
+  "maxmemory_bytes": 2097152,
+  "mode": "eviction",
+  "note": "Use a dedicated disposable Redis: allkeys-lru can evict any key in that instance.",
+  "policy": "allkeys-lru"
+}

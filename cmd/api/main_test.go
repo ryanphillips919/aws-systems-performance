@@ -13,3 +13,18 @@ func TestBackendName(t *testing.T) {
 		}
 	}
 }
+
+func TestCacheEnabledConfiguration(t *testing.T) {
+	t.Setenv("CACHE_ENABLED", "")
+	if v, err := boolEnv("CACHE_ENABLED", false); err != nil || v {
+		t.Fatalf("default: %v %v", v, err)
+	}
+	t.Setenv("CACHE_ENABLED", "true")
+	if v, err := boolEnv("CACHE_ENABLED", false); err != nil || !v {
+		t.Fatalf("enabled: %v %v", v, err)
+	}
+	t.Setenv("CACHE_ENABLED", "bad")
+	if _, err := boolEnv("CACHE_ENABLED", false); err == nil {
+		t.Fatal("invalid value accepted")
+	}
+}

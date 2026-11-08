@@ -1,6 +1,6 @@
 # AWS Systems Performance: URL analytics
 
-A local-first lab for Midterm 2: measure latency and throughput, understand database access paths and concurrency, then explore caching and distributed systems. The Go service defaults to **PostgreSQL** and can alternatively use **DynamoDB Local**. Redis is running but unused; AWS deployment is future work. Recorded measurements identify their conditions; local timings do not represent AWS performance.
+A local-first lab for Midterm 2: measure latency and throughput, understand database access paths and concurrency, then explore caching and distributed systems. The Go service defaults to **PostgreSQL** and can alternatively use **DynamoDB Local**. Redis provides optional cache-aside reads and is disabled by default; AWS deployment is future work. Recorded measurements identify their conditions; local timings do not represent AWS performance.
 
 ## Start locally
 
@@ -16,7 +16,7 @@ curl http://localhost:8000/links/seed000001
 curl http://localhost:8000/users/user001/links
 ```
 
-The API is at http://localhost:8000, and Prometheus is at http://localhost:9090. PostgreSQL is exposed on localhost port 5433 by default to avoid conflicts with an existing PostgreSQL service; set `POSTGRES_PORT` before starting Compose to choose another host port. Inside Compose it remains on port 5432. The health endpoint checks the configured backend and identifies it. Compose waits for database health before API startup; database initialization occurs at API startup. `docker compose logs -f api` shows startup errors. Stop with `docker compose down`; to delete **all local database data**, use `docker compose down -v`, then start and seed again. This permanently deletes all local database data, including non-seed links.
+Open the Link Lab interface at http://localhost:8000 to create links and browse up to 100 links for a user ID. Try `user001` after seeding. The API shares that address, and Prometheus is at http://localhost:9090. PostgreSQL is exposed on localhost port 5433 by default to avoid conflicts with an existing PostgreSQL service; set `POSTGRES_PORT` before starting Compose to choose another host port. Inside Compose it remains on port 5432. The health endpoint checks the configured backend and identifies it. Compose waits for database health before API startup; database initialization occurs at API startup. `docker compose logs -f api` shows startup errors. Stop with `docker compose down`; to delete **all local database data**, use `docker compose down -v`, then start and seed again. This permanently deletes all local database data, including non-seed links.
 
 The seed script creates 1,000 predictable codes (`seed000001` onward), dates and 100 users. It inserts missing rows only, preserving existing click counts and edits; rerunning does not restore changed data. Use `docker compose exec -e SEED_COUNT=10000 api seed` to add a larger fixture. Reset the volume for identical initial state; don't do so if you want to preserve local data.
 
@@ -81,7 +81,7 @@ A small Go storage interface separates the API from SQL; PostgreSQL is the defau
 
 Throughput is completed requests per unit time; latency is per-request time. Increasing offered load can produce queues, saturation and sharply rising tail latency. Open-loop schedules arrivals independent of response time until the generator hits its VU limit; closed-loop users wait for each response, so offered load falls as latency rises. This can conceal overload. A percentile describes a distribution, not a maximum; select an SLO threshold and measure its violation rate over a defined window. Fan-out can amplify tail latency because a request waits for multiple responses. The [six experiment templates](experiments/) contain predictions, procedures and exam questions. Do not claim observed effects until measured.
 
-The DynamoDB table uses `shortCode` as its partition key and a `userId` / `createdAt` GSI. A GSI Query accesses a key range while Scan reads broadly; measure consumed capacity as well as latency. GSI reads are eventually consistent, index writes cost capacity/storage, and a global popularity ranking requires a separate design. Redis lookaside, TTL, invalidation and herd control are later experiments, as are sharding and fan-out.
+The DynamoDB table uses `shortCode` as its partition key and a `userId` / `createdAt` GSI. A GSI Query accesses a key range while Scan reads broadly; measure consumed capacity as well as latency. GSI reads are eventually consistent, index writes cost capacity/storage, and a global popularity ranking requires a separate design. Redis cache-aside, TTL, invalidation and herd control are available as experiments; sharding and fan-out remain future work.
 
 ## DynamoDB Local and indexing lab
 
@@ -108,16 +108,59 @@ Run the isolated, deterministic experiment (reset deletes only its experiment ta
 
 ```sh
 docker compose exec -T api dynamolab -mode seed -count 1000 -reset
-docker compose exec -T api dynamolab -mode compare -runs 3 > results.json
+docker compose exec -T api dynamolab -mode compare -runs 5 -warmups 1 -seed 1 > results.json
 docker compose exec -T api dynamolab -mode consistency
 ```
 
-Try 100, 1,000 and 10,000 records. The comparison measures complete Scan versus GSI Query for `user001`, and Scan versus GetItem for `seed000001`; it checks equivalent results and reports examined and returned counts, pages, elapsed time, and SDK capacity metadata. `-page-limit 2` forces pagination. JSON goes to stdout and a readable summary to stderr. [A measured 1,000-item local example](experiments/results/dynamodb-local-1000.json) is included. Local timing and simulated capacity do not predict AWS performance or bills; real GSI replication lag is also not reproduced reliably.
+Try 100, 1,000 and 10,000 records. The comparison measures complete Scan versus GSI Query for `user001`, and Scan versus GetItem for `seed000001`; it checks equivalent results and reports examined and returned counts, pages, elapsed time, and SDK capacity metadata. `-page-limit 2` forces pagination. Each comparison performs one excluded warm-up by default, then rotates a seeded operation order to reduce order and cache-warming bias. JSON includes individual runs, order, seed, warm-up count, and median latency per operation; JSON goes to stdout and a readable summary to stderr. The service waits for both the table and GSI to be ACTIVE before use. [A measured 1,000-item local example](experiments/results/dynamodb-local-1000.json) is included. Local timing and simulated capacity do not predict AWS performance or bills; real GSI replication lag is also not reproduced reliably.
 
 To run real local integration tests (isolated temporary tables):
 
 ```sh
 DYNAMODB_TEST_ENDPOINT=http://localhost:8001 go test -count=1 -v ./internal/dynamolab
+```
+
+## Redis cache-aside lab
+
+Caching is disabled by default. PostgreSQL or DynamoDB remains authoritative; only `GET /links/{code}` uses cache-aside. Redirects and explicit clicks still perform atomic database updates, with best-effort invalidation before and after successful clicks. Concurrent fills or Redis outages can leave stale cached click counts until TTL or eviction. The cache is not a correctness or durability layer.
+
+```mermaid
+flowchart LR
+    Client --> API[Go API]
+    API -->|lookup| Redis[(Redis)]
+    Redis -->|hit| API
+    API -->|miss or Redis error| DB[(PostgreSQL or DynamoDB)]
+    DB -->|read result| API
+    API -->|fill with TTL| Redis
+    API -->|redirect or click: atomic update| DB
+```
+
+Enable caching for the PostgreSQL API and choose a TTL:
+
+```sh
+CACHE_ENABLED=true CACHE_TTL_SECONDS=60 docker compose up -d --no-deps api
+```
+
+Use `CACHE_ENABLED=false docker compose up -d --no-deps api` to return to the default. `CACHE_COALESCE=true` optionally combines overlapping cache misses within one API process; it is not a distributed lock. The Compose Redis address is `redis:6379` and is exposed only on localhost. Disabled caching does not require Redis. Enabled caching falls back to the database on Redis lookup errors; cache operations use short timeouts and errors are counted separately.
+
+At http://localhost:9090, example queries are:
+
+```promql
+sum(rate(cache_operations_total{operation="get",result="hit"}[1m])) /
+sum(rate(cache_operations_total{operation="get",result=~"hit|miss"}[1m]))
+```
+
+```promql
+sum(rate(cache_operations_total{result="error"}[1m]))
+sum(rate(cache_backend_lookups_total[1m]))
+```
+
+The hit ratio excludes Redis errors; it is undefined with no hits or misses. Cache metrics are present only while caching is enabled and reset on API restart. `cache_backend_lookups_total` counts database reads through cache-aside, not click updates or list queries. `cache_operation_duration_seconds` is a histogram for Redis operations with bounded operation/result labels.
+
+The [caching guide](experiments/03-caching.md) gives exact commands for disabled/cold/warm latency, TTL, isolated eviction, concurrent herd/coalescing, and an invalidation race. Its local smoke results are illustrative, not production performance claims. To run real Redis and database integration tests:
+
+```sh
+REDIS_TEST_ADDR=localhost:6379 TEST_DATABASE_URL=postgresql://app:app@localhost:5433/analytics DYNAMODB_TEST_ENDPOINT=http://localhost:8001 go test -count=1 -v ./internal/cache
 ```
 
 ## AWS cost and safety

@@ -1,0 +1,18 @@
+{
+  "cache_metric_deltas": {
+    "backend_lookups": 0,
+    "error": 0,
+    "hit": 100,
+    "miss": 0
+  },
+  "elapsed_seconds": 0.083288066,
+  "failures": 0,
+  "mode": "latency",
+  "note": "single sequential client; throughput includes cold-state DEL preparation; disabled mode has no backend counter",
+  "p50_ms": 0.829,
+  "p95_ms": 0.932,
+  "p99_ms": 1.013,
+  "requests": 100,
+  "requests_per_second": 1200.6522038823666,
+  "state": "warm"
+}

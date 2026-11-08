@@ -91,21 +91,59 @@ func (d *DB) Initialize(ctx context.Context) error {
 			return fmt.Errorf("connect to DynamoDB Local: %w", err)
 		}
 	}
-	waiter := dynamodb.NewTableExistsWaiter(d.Client)
-	if err := waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(d.Table)}, 60*time.Second, func(o *dynamodb.TableExistsWaiterOptions) { o.MinDelay = time.Second; o.MaxDelay = 2 * time.Second }); err != nil {
-		return err
-	}
-	desc, err := d.Client.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(d.Table)})
-	if err != nil {
-		return err
-	}
-	for _, index := range desc.Table.GlobalSecondaryIndexes {
-		if aws.ToString(index.IndexName) == Index && index.IndexStatus == types.IndexStatusActive {
-			return nil
+	// Bound readiness separately while preserving any earlier caller deadline.
+	readyCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	return waitForActive(readyCtx, d.Table, time.Second, func(ctx context.Context) (*dynamodb.DescribeTableOutput, error) {
+		return d.Client.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(d.Table)})
+	})
+}
+
+// waitForActive waits for both the table and its GSI; table readiness alone
+// does not guarantee that the index can serve queries.
+func waitForActive(ctx context.Context, table string, interval time.Duration, describe func(context.Context) (*dynamodb.DescribeTableOutput, error)) error {
+	last := "not yet described"
+	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("waiting for table %s and GSI %s to become ACTIVE (last state: %s): %w", table, Index, last, err)
+		}
+		out, err := describe(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("waiting for table %s and GSI %s to become ACTIVE (last state: %s): %w", table, Index, last, ctx.Err())
+			}
+			var missing *types.ResourceNotFoundException
+			if !errors.As(err, &missing) {
+				return fmt.Errorf("describe table %s while waiting for GSI %s: %w", table, Index, err)
+			}
+			last = "table not yet visible"
+		} else if out == nil || out.Table == nil {
+			return fmt.Errorf("describe table %s: missing table description", table)
+		} else {
+			last = fmt.Sprintf("table=%s, GSI=not present", out.Table.TableStatus)
+			for _, index := range out.Table.GlobalSecondaryIndexes {
+				if aws.ToString(index.IndexName) != Index {
+					continue
+				}
+				last = fmt.Sprintf("table=%s, GSI=%s", out.Table.TableStatus, index.IndexStatus)
+				if out.Table.TableStatus == types.TableStatusActive && index.IndexStatus == types.IndexStatusActive {
+					return nil
+				}
+				if index.IndexStatus == types.IndexStatusDeleting {
+					return fmt.Errorf("waiting for table %s: GSI %s is deleting", table, Index)
+				}
+			}
+		}
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("waiting for table %s and GSI %s to become ACTIVE (last state: %s): %w", table, Index, last, ctx.Err())
+		case <-timer.C:
 		}
 	}
-	return fmt.Errorf("table %s has no active %s GSI", d.Table, Index)
 }
+
 func (d *DB) Health(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

@@ -22,10 +22,12 @@ func main() {
 	user := flag.String("user", "user001", "user to query")
 	code := flag.String("code", "seed000001", "code to look up")
 	runs := flag.Int("runs", 3, "repetitions")
+	warmups := flag.Int("warmups", 1, "warm-up iterations excluded from results")
+	seed := flag.Int64("seed", 1, "seed for reproducible execution order")
 	page := flag.Int("page-limit", 0, "maximum items evaluated per request (0 uses service default)")
 	flag.Parse()
-	if *runs < 1 || *page < 0 || *count < 1 {
-		log.Fatal("count and runs must be positive; page-limit must be nonnegative")
+	if *runs < 1 || *page < 0 || *count < 1 || *warmups < 0 {
+		log.Fatal("count and runs must be positive; page-limit and warmups must be nonnegative")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
@@ -91,44 +93,25 @@ func main() {
 				break
 			}
 		}
-		type run struct {
-			Iteration                              int `json:"iteration"`
-			UserScan, UserQuery, CodeScan, CodeGet dynamolab.Measurement
+		results, medians, err := runComparison(ctx, db.Measure, *user, *code, int32(*page), *runs, *warmups, *seed)
+		if err != nil {
+			log.Fatal(err)
 		}
 		output := struct {
-			DatasetItems int    `json:"dataset_items"`
-			User         string `json:"user"`
-			Code         string `json:"code"`
-			PageLimit    int    `json:"page_limit"`
-			CapacityNote string `json:"capacity_note"`
-			Runs         []run  `json:"runs"`
-		}{DatasetItems: total, User: *user, Code: *code, PageLimit: *page, CapacityNote: "DynamoDB Local capacity is simulated and not suitable for AWS cost estimates"}
-		for i := 1; i <= *runs; i++ {
-			scan, err := db.Measure(ctx, "user_scan", *user, int32(*page))
-			if err != nil {
-				log.Fatal(err)
-			}
-			query, err := db.Measure(ctx, "user_query", *user, int32(*page))
-			if err != nil {
-				log.Fatal(err)
-			}
-			cs, err := db.Measure(ctx, "code_scan", *code, int32(*page))
-			if err != nil {
-				log.Fatal(err)
-			}
-			cg, err := db.Measure(ctx, "code_get", *code, int32(*page))
-			if err != nil {
-				log.Fatal(err)
-			}
-			if !dynamolab.EqualItems(scan.Items, query.Items) || !dynamolab.EqualItems(cs.Items, cg.Items) {
-				log.Fatal("result mismatch (GSI propagation or concurrent writes may be responsible); retry on a stable dataset")
-			}
-			if scan.Returned == 0 || cg.Returned != 1 {
-				log.Fatal("expected seeded user and code were not found")
-			}
-			fmt.Fprintf(os.Stderr, "run %d: user scan %d examined / %d returned; query %d / %d; code scan %d / get %d\n", i, scan.Examined, scan.Returned, query.Examined, query.Returned, cs.Examined, cg.Examined)
-			output.Runs = append(output.Runs, run{Iteration: i, UserScan: scan, UserQuery: query, CodeScan: cs, CodeGet: cg})
+			DatasetItems    int                `json:"dataset_items"`
+			User            string             `json:"user"`
+			Code            string             `json:"code"`
+			PageLimit       int                `json:"page_limit"`
+			Warmups         int                `json:"warmups"`
+			Seed            int64              `json:"seed"`
+			CapacityNote    string             `json:"capacity_note"`
+			MedianElapsedMS map[string]float64 `json:"median_elapsed_ms"`
+			Runs            []compareRun       `json:"runs"`
+		}{DatasetItems: total, User: *user, Code: *code, PageLimit: *page, Warmups: *warmups, Seed: *seed, CapacityNote: "DynamoDB Local capacity is simulated and not suitable for AWS cost estimates", MedianElapsedMS: medians, Runs: results}
+		for _, r := range results {
+			fmt.Fprintf(os.Stderr, "run %d (%v): user scan %d examined / %d returned; query %d / %d; code scan %d / get %d\n", r.Iteration, r.ExecutionOrder, r.UserScan.Examined, r.UserScan.Returned, r.UserQuery.Examined, r.UserQuery.Returned, r.CodeScan.Examined, r.CodeGet.Examined)
 		}
+		fmt.Fprintf(os.Stderr, "median elapsed ms: %v\n", medians)
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(output); err != nil {

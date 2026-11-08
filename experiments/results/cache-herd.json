@@ -1,0 +1,29 @@
+{
+  "artificial_db_delay_ms": 100,
+  "mode": "herd",
+  "note": "single process; delay is deliberately injected to make overlapping misses observable",
+  "runs": [
+    {
+      "backend_reads": 30,
+      "cache_misses": 30,
+      "coalescing": false,
+      "duration_ms": 182.819,
+      "errors": 0,
+      "incoming": 30,
+      "p50_ms": 143.252,
+      "p95_ms": 180.235,
+      "p99_ms": 180.98
+    },
+    {
+      "backend_reads": 1,
+      "cache_misses": 30,
+      "coalescing": true,
+      "duration_ms": 117.141,
+      "errors": 0,
+      "incoming": 30,
+      "p50_ms": 115.737,
+      "p95_ms": 116.073,
+      "p99_ms": 116.274
+    }
+  ]
+}

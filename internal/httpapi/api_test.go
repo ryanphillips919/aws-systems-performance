@@ -257,3 +257,14 @@ func TestBackendReportingAndUnsupportedPopular(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 }
+
+func TestIndexPageAndUnknownRoute(t *testing.T) {
+	h := New(&memoryStore{links: map[string]store.Link{}})
+	w := request(h, http.MethodGet, "/", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Header().Get("Content-Type"), "text/html") || !strings.Contains(w.Body.String(), "Create a link") {
+		t.Fatalf("unexpected index response: %d %s", w.Code, w.Header().Get("Content-Type"))
+	}
+	if w := request(h, http.MethodGet, "/not-a-page", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("unexpected route status: %d", w.Code)
+	}
+}

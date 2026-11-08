@@ -8,13 +8,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"aws-systems-performance/internal/cache"
 	"aws-systems-performance/internal/dynamolab"
 	"aws-systems-performance/internal/httpapi"
 	"aws-systems-performance/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func backendName(raw string) (string, error) {
@@ -25,6 +28,18 @@ func backendName(raw string) (string, error) {
 		return raw, nil
 	}
 	return "", fmt.Errorf("unknown STORAGE_BACKEND %q (choose postgres or dynamodb)", raw)
+}
+
+func boolEnv(key string, fallback bool) (bool, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback, nil
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s must be true or false", key)
+	}
+	return v, nil
 }
 
 func main() {
@@ -65,6 +80,31 @@ func main() {
 		db = d
 	default:
 		log.Fatalf("unknown STORAGE_BACKEND %q (choose postgres or dynamodb)", backend)
+	}
+	enabled, err := boolEnv("CACHE_ENABLED", false)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if enabled {
+		ttlSeconds := int64(60)
+		if raw := os.Getenv("CACHE_TTL_SECONDS"); raw != "" {
+			ttlSeconds, err = strconv.ParseInt(raw, 10, 32)
+			if err != nil || ttlSeconds < 1 {
+				log.Fatal("CACHE_TTL_SECONDS must be a positive integer")
+			}
+		}
+		coalesce, err := boolEnv("CACHE_COALESCE", false)
+		if err != nil {
+			log.Fatal(err)
+		}
+		addr := os.Getenv("REDIS_ADDR")
+		if addr == "" {
+			addr = "localhost:6379"
+		}
+		client := redis.NewClient(&redis.Options{Addr: addr, DialTimeout: 150 * time.Millisecond, ReadTimeout: 150 * time.Millisecond, WriteTimeout: 150 * time.Millisecond, PoolTimeout: 200 * time.Millisecond, MaxRetries: -1, ContextTimeoutEnabled: true})
+		defer client.Close()
+		db = cache.New(db, client, time.Duration(ttlSeconds)*time.Second, backend, coalesce)
+		log.Printf("Redis cache enabled; ttl=%ds coalescing=%t", ttlSeconds, coalesce)
 	}
 	label := backend
 	if label == "postgres" {
