@@ -43,6 +43,13 @@ func boolEnv(key string, fallback bool) (bool, error) {
 	return v, nil
 }
 
+func envDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -78,6 +85,26 @@ func main() {
 			log.Fatal(err)
 		}
 		defer closeShards()
+		lab, err := boolEnv("FANOUT_LAB_ENABLED", false)
+		if err != nil {
+			log.Fatal(err)
+		}
+		delayMS, err := strconv.Atoi(envDefault("FANOUT_DELAY_MS", "0"))
+		if err != nil || delayMS < 0 || delayMS > 5000 {
+			log.Fatal("FANOUT_DELAY_MS must be between 0 and 5000")
+		}
+		delayShard := os.Getenv("FANOUT_DELAY_SHARD")
+		if !lab && (delayMS != 0 || delayShard != "") {
+			log.Fatal("fan-out delay requires FANOUT_LAB_ENABLED=true")
+		}
+		if lab && delayMS > 0 {
+			if err := sharded.EnableLocalDelay(delayShard, time.Duration(delayMS)*time.Millisecond, urls); err != nil {
+				log.Fatal(err)
+			}
+			log.Printf("local fan-out lab: adding %dms to %s reads", delayMS, delayShard)
+		} else if delayShard != "" {
+			log.Fatal("FANOUT_DELAY_SHARD requires a positive FANOUT_DELAY_MS")
+		}
 		db = sharded
 		cacheNamespace = backend + ":" + placement.Fingerprint()[:16]
 	case "dynamodb":

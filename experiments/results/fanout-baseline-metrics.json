@@ -1,0 +1,43 @@
+{
+  "note": "cumulative metrics since API startup; timings include local injected delays",
+  "operations": {
+    "list": {
+      "fanout_count": 60,
+      "fanout_mean_ms": 1.4627042666666665,
+      "mean_shards_contacted": 3.0,
+      "shards": {
+        "shard1": {
+          "count": 60,
+          "mean_ms": 1.0031048333333337
+        },
+        "shard2": {
+          "count": 60,
+          "mean_ms": 1.0896325999999996
+        },
+        "shard3": {
+          "count": 60,
+          "mean_ms": 1.0770100166666665
+        }
+      }
+    },
+    "popular": {
+      "fanout_count": 59,
+      "fanout_mean_ms": 1.1687364915254241,
+      "mean_shards_contacted": 3.0,
+      "shards": {
+        "shard1": {
+          "count": 59,
+          "mean_ms": 0.8937595762711865
+        },
+        "shard2": {
+          "count": 59,
+          "mean_ms": 0.7902233389830509
+        },
+        "shard3": {
+          "count": 59,
+          "mean_ms": 0.9763341186440678
+        }
+      }
+    }
+  }
+}

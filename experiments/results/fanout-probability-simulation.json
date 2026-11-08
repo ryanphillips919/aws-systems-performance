@@ -1,0 +1,33 @@
+{
+  "p": 0.99,
+  "trials": 100000,
+  "seed": 42,
+  "note": "independent simulated events; not measured PostgreSQL latency",
+  "points": [
+    {
+      "shards": 1,
+      "theoretical": 0.99,
+      "simulated": 0.99015
+    },
+    {
+      "shards": 3,
+      "theoretical": 0.9702989999999999,
+      "simulated": 0.97004
+    },
+    {
+      "shards": 5,
+      "theoretical": 0.9509900498999999,
+      "simulated": 0.95103
+    },
+    {
+      "shards": 10,
+      "theoretical": 0.9043820750088043,
+      "simulated": 0.90357
+    },
+    {
+      "shards": 20,
+      "theoretical": 0.8179069375972307,
+      "simulated": 0.8208
+    }
+  ]
+}

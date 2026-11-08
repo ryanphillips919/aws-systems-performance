@@ -1,0 +1,12 @@
+{
+  "healthy_shard_point": 200,
+  "failed_shard_point": 500,
+  "user_fanout": 500,
+  "popular_fanout": 500,
+  "shard3_error_metric_present": true,
+  "recovery": {
+    "health": 200,
+    "previously_failed_point": 200,
+    "user_fanout": 200
+  }
+}

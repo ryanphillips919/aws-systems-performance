@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"aws-systems-performance/internal/store"
@@ -17,6 +18,7 @@ type Store struct {
 	operations *prometheus.CounterVec
 	durations  *prometheus.HistogramVec
 	fanout     *prometheus.HistogramVec
+	contacted  *prometheus.HistogramVec
 }
 
 func NewStore(p *Placement, shards map[string]store.Store) (*Store, error) {
@@ -28,10 +30,10 @@ func NewStore(p *Placement, shards map[string]store.Store) (*Store, error) {
 			return nil, fmt.Errorf("missing shard %s", id)
 		}
 	}
-	return &Store{placement: p, shards: shards, operations: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "shard_operations_total", Help: "Operations sent to each shard"}, []string{"shard", "operation", "result"}), durations: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "shard_operation_duration_seconds", Help: "Time spent in each shard operation"}, []string{"shard", "operation"}), fanout: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "shard_fanout_duration_seconds", Help: "Time spent on cross-shard operations"}, []string{"operation"})}, nil
+	return &Store{placement: p, shards: shards, operations: prometheus.NewCounterVec(prometheus.CounterOpts{Name: "shard_operations_total", Help: "Operations sent to each shard"}, []string{"shard", "operation", "result"}), durations: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "shard_operation_duration_seconds", Help: "Time spent in each shard operation"}, []string{"shard", "operation"}), fanout: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "shard_fanout_duration_seconds", Help: "Time spent on cross-shard operations"}, []string{"operation"}), contacted: prometheus.NewHistogramVec(prometheus.HistogramOpts{Name: "shard_fanout_shards_contacted", Help: "Number of shard calls initiated by a fan-out query", Buckets: []float64{1, 2, 3, 5, 10, 20, 32}}, []string{"operation"})}, nil
 }
 func (s *Store) RegisterMetrics(reg prometheus.Registerer) {
-	reg.MustRegister(s.operations, s.durations, s.fanout)
+	reg.MustRegister(s.operations, s.durations, s.fanout, s.contacted)
 }
 func (s *Store) observe(id, op string, start time.Time, err error) {
 	result := "success"
@@ -64,7 +66,11 @@ func (s *Store) Click(ctx context.Context, code string) (store.Link, error) {
 }
 func (s *Store) collect(ctx context.Context, op string, user string, limit int) ([]store.Link, error) {
 	start := time.Now()
-	defer func() { s.fanout.WithLabelValues(op).Observe(time.Since(start).Seconds()) }()
+	var contacted atomic.Int64
+	defer func() {
+		s.fanout.WithLabelValues(op).Observe(time.Since(start).Seconds())
+		s.contacted.WithLabelValues(op).Observe(float64(contacted.Load()))
+	}()
 	parts := make([][]store.Link, len(s.placement.IDs))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(8)
@@ -72,6 +78,7 @@ func (s *Store) collect(ctx context.Context, op string, user string, limit int) 
 		i, id := i, id
 		g.Go(func() error {
 			started := time.Now()
+			contacted.Add(1)
 			var links []store.Link
 			var err error
 			if op == "list" {

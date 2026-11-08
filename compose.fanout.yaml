@@ -1,0 +1,22 @@
+# Isolated local experiment: use with -p fanout-lab and compose.shards.yaml.
+services:
+  api:
+    ports: !override ["127.0.0.1:${FANOUT_HTTP_PORT:-18080}:8000"]
+    environment:
+      FANOUT_LAB_ENABLED: ${FANOUT_LAB_ENABLED:-false}
+      FANOUT_DELAY_SHARD: ${FANOUT_DELAY_SHARD:-}
+      FANOUT_DELAY_MS: ${FANOUT_DELAY_MS:-0}
+  db:
+    ports: !override []
+  dynamodb:
+    ports: !override []
+  redis:
+    ports: !override []
+  prometheus:
+    ports: !override ["127.0.0.1:${FANOUT_PROMETHEUS_PORT:-19090}:9090"]
+  shard1:
+    ports: !override ["127.0.0.1:${FANOUT_SHARD1_PORT:-15441}:5432"]
+  shard2:
+    ports: !override ["127.0.0.1:${FANOUT_SHARD2_PORT:-15442}:5432"]
+  shard3:
+    ports: !override ["127.0.0.1:${FANOUT_SHARD3_PORT:-15443}:5432"]

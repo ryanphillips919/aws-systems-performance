@@ -168,6 +168,23 @@ The [sharding guide](experiments/05-sharding.md) includes results, SQL inspectio
 
 To return the API to its default single-PostgreSQL backend, run `docker compose up -d --build api`. The shard containers and volumes remain separate; no rows are automatically migrated or deleted. The k6 scripts work in sharded mode after running `shardseed`.
 
+### 5. Fan-out and tail latency
+
+User listings and popularity rankings query all three shards concurrently. A local experiment adds an opt-in delay to one shard and compares those requests with a point lookup on a healthy shard. In two short runs, median user-list latency rose from about 2.3 ms to 202 ms with a 200 ms injected delay. These small local samples demonstrate the mechanism, not production latency or a reliable p99.
+
+![Measured effect of a slow shard](experiments/figures/fanout-slow-shard.png)
+
+Start the isolated lab, seed it, and verify distribution and merged results:
+
+```sh
+docker compose -p fanout-lab -f compose.yaml -f compose.shards.yaml -f compose.fanout.yaml up -d --build
+curl http://localhost:18080/health  # retry until ready
+docker compose -p fanout-lab -f compose.yaml -f compose.shards.yaml -f compose.fanout.yaml exec -T api shardseed -count 1000
+python3 scripts/verify_fanout.py
+```
+
+The [fan-out guide](experiments/06-fanout.md) includes k6 workloads, measured JSON and charts, a controlled shard outage and recovery, a probability simulation, and exam questions. The lab uses separate local ports and volumes; artificial delay is disabled by default and has no public control endpoint.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -214,7 +231,7 @@ sum(rate(cache_operations_total{operation="get",result="hit"}[1m]))
 sum(rate(cache_operations_total{operation="get",result=~"hit|miss"}[1m]))
 ```
 
-In sharded mode, `shard_operations_total`, `shard_operation_duration_seconds`, `shard_fanout_duration_seconds` expose per-shard operations and fan-out duration with bounded labels. Cache hits avoid shard reads.
+In sharded mode, `shard_operations_total`, `shard_operation_duration_seconds`, `shard_fanout_duration_seconds`, and `shard_fanout_shards_contacted` expose per-shard operations, fan-out duration, and initiated shard calls with bounded labels. Cache hits avoid shard reads.
 
 The histogram-derived percentile is approximate. Client-side k6 latency and server-side HTTP latency cover different parts of a request, so they may differ. Cache metrics appear only when caching is enabled; the hit ratio excludes Redis errors and is undefined when there are no hits or misses.
 
@@ -246,7 +263,7 @@ Tests requiring external services are skipped when their environment variables a
 
 ## Next steps
 
-Planned work includes fan-out and tail-latency experiments, richer benchmark reports, and a possible short-lived AWS deployment with multiple application instances, RDS, and shared caching. Any AWS deployment requires separate approval and a cost estimate within the project's $20 maximum budget, preferably below $5.
+Planned work includes longer fan-out and tail-latency experiments, richer benchmark reports, and a possible short-lived AWS deployment with multiple application instances, RDS, and shared caching. Any AWS deployment requires separate approval and a cost estimate within the project's $20 maximum budget, preferably below $5.
 
 ## Background
 

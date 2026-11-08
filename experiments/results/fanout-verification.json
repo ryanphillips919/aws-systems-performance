@@ -1,0 +1,12 @@
+{
+  "environment": "isolated local Docker Compose project fanout-lab, consistent placement with 128 virtual nodes, cache disabled except cache verification",
+  "dataset": "1000 deterministic shardseed links",
+  "physical_shard_counts": {"shard1": 352, "shard2": 323, "shard3": 325},
+  "one_point_lookup_per_shard": {"shard1": "seed000006", "shard2": "seed000001", "shard3": "seed000002"},
+  "user001_count": 10,
+  "user_merge_matches_independent_sql": true,
+  "popularity_matches_independent_sql": true,
+  "redis_cache_hit_observed": true,
+  "incompatible_placement_rejected_by_integration_test": true,
+  "failure_and_recovery": "See fanout-failure.json"
+}
