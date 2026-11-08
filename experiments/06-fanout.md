@@ -27,7 +27,21 @@ Server-side user-listing metrics showed mean fan-out duration of 1.46 ms at base
 
 The request charts show the **median of two per-run percentiles**, not percentiles computed from pooled requests. The fourth chart compares server-side means, not shard p99s. With only about 25 requests per run, p95 and especially p99 are unstable; use longer runs and repeated trials for serious conclusions. Local scheduling, hardware and background load affect results. JSON files preserve the individual runs, actual achieved throughput, errors, and dropped iterations; a missing k6 dropped-iterations metric is represented as null.
 
-In a separate controlled outage with the cache disabled, stopping shard 3 produced HTTP 200 for a shard 1 point lookup, HTTP 500 for a shard 3 point lookup, and HTTP 500 for both global queries. A shard 3 error metric appeared. After the shard restarted, health, the failed point lookup, and the user listing returned HTTP 200. [Failure results](results/fanout-failure.json).
+In a separate controlled outage with the cache disabled, stopping shard 3 produced HTTP 200 for a shard 1 point lookup, HTTP 500 for a shard 3 point lookup, and HTTP 500 for both global queries. These are historical results from before the dependency-error changes; the current API returns HTTP 503 for identified connection failures. A shard 3 error metric appeared. After the shard restarted, health, the failed point lookup, and the user listing returned HTTP 200. [Failure results](results/fanout-failure.json).
+
+## Longer benchmark configuration
+
+The original results above are retained as short smoke tests. No longer benchmark measurements were collected for this revision because Docker was unavailable in the implementation environment; there are no new charts or p99 claims. The runner below uses separate point and user workloads, three repetitions per condition, 25 offered requests/s for 60 seconds per run, and a separate 10-second warmup. It keeps cache disabled, pins consistent placement and the same seed keys, records actual per-shard row counts and host details, and restores the baseline API after the injected-delay phase. The dataset must remain unchanged throughout the experiment; use a fresh isolated project and avoid concurrent writes or background load.
+
+After starting and seeding the isolated lab as shown below, run:
+
+~~~sh
+python3 scripts/benchmark_fanout_long.py --output my-fanout-long
+# Optional bounded configuration:
+python3 scripts/benchmark_fanout_long.py --rate 25 --duration 60 --warmup 10 --repetitions 3 --output my-other-fanout-long
+~~~
+
+The output directory must be new. Each JSON file preserves the warmup and measured k6 summary, including offered rate, achieved throughput, request counts, average, p50/p95/p99, failures, checks and dropped iterations. Compare the individual run percentiles and their range; these are per-run values, not a pooled request p99. A missing dropped-iterations metric means k6 did not report any. The runner flags drops or throughput below 95% of the offered rate as signs to investigate; neither proves whether the generator or server is responsible. Inspect CPU, errors, and VU capacity on both before increasing load. k6 uses a fixed local Compose target and disables redirects. This local injection demonstrates the effect of one required slow shard, not AWS performance. Existing plotting scripts use only the historical short-run files and do not plot these new trials.
 
 ## Probability experiment
 
@@ -85,7 +99,7 @@ CACHE_ENABLED=false FANOUT_LAB_ENABLED=true FANOUT_DELAY_SHARD=shard3 FANOUT_DEL
 python3 scripts/capture_fanout_metrics.py > my-slow-metrics.json
 ~~~
 
-Disable injection before the failure experiment. The script stops only shard 3 in the isolated fanout-lab project and attempts to restart it in a finally block. It requires the seeded data and cache-disabled API; wait for health after the API restart. It verifies explicit errors, the shard error metric, and recovery.
+Disable injection before the failure experiment. The script stops only shard 3 in the isolated fanout-lab project and attempts to restart it in a finally block. It requires the seeded data and cache-disabled API; wait for health after the API restart. It verifies HTTP 503 responses for the failed shard and fan-out requests, the shard error metric, and recovery.
 
 ~~~sh
 CACHE_ENABLED=false FANOUT_LAB_ENABLED=false docker compose -p fanout-lab -f compose.yaml -f compose.shards.yaml -f compose.fanout.yaml up -d --no-deps api

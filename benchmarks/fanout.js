@@ -22,6 +22,6 @@ export default function () {
 export function handleSummary(data) {
   const values = name => data.metrics[name] ? data.metrics[name].values : null;
   const result = { mode, offered_rate_per_second: rate, configured_duration: duration, code, user, elapsed_ms: data.state.testRunDurationMs,
-    requests: values('http_reqs'), latency_ms: values('http_req_duration'), failed: values('http_req_failed'), checks: values('checks'), dropped_iterations: values('dropped_iterations') };
+    requests: values('http_reqs'), achieved_requests_per_second: values('http_reqs') ? values('http_reqs').rate : 0, latency_ms: values('http_req_duration'), failed: values('http_req_failed'), checks: values('checks'), dropped_iterations: values('dropped_iterations') };
   return { stdout: JSON.stringify(result, null, 2) + '\n' };
 }

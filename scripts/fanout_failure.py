@@ -45,7 +45,7 @@ try:
               'failed_shard_point': status('/links/seed000002'),
               'user_fanout': status('/users/user001/links'),
               'popular_fanout': status('/analytics/popular')}
-    expected = {'healthy_shard_point': 200, 'failed_shard_point': 500, 'user_fanout': 500, 'popular_fanout': 500}
+    expected = {'healthy_shard_point': 200, 'failed_shard_point': 503, 'user_fanout': 503, 'popular_fanout': 503}
     if result != expected:
         raise RuntimeError(f'unexpected failure responses: {result}')
     with urlopen(args.url + '/metrics', timeout=10) as response:

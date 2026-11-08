@@ -4,6 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -36,18 +41,39 @@ func (p *Postgres) Initialize(ctx context.Context) error {
 	return nil
 }
 
+// postgresError classifies transport and explicit server availability failures,
+// while leaving SQL and application errors intact. Preserve the cause.
+func postgresError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		if strings.HasPrefix(pgErr.Code, "08") || pgErr.Code == "57P01" || pgErr.Code == "57P02" || pgErr.Code == "57P03" || pgErr.Code == "53300" {
+			return fmt.Errorf("%w: %w", ErrUnavailable, err)
+		}
+		return err
+	}
+	var connectErr *pgconn.ConnectError
+	var netErr net.Error
+	if errors.As(err, &connectErr) || errors.As(err, &netErr) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %w", ErrUnavailable, err)
+	}
+	return err
+}
+
 func scan(row pgx.Row) (Link, error) {
 	var link Link
 	err := row.Scan(&link.Code, &link.UserID, &link.DestinationURL, &link.CreatedAt, &link.ClickCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Link{}, ErrNotFound
 	}
-	return link, err
+	return link, postgresError(err)
 }
 func (p *Postgres) Health(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
-	return p.Pool.Ping(ctx)
+	return postgresError(p.Pool.Ping(ctx))
 }
 func (p *Postgres) Create(ctx context.Context, code, user, destination string) (Link, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
@@ -77,7 +103,7 @@ func (p *Postgres) Popular(ctx context.Context, limit int) ([]Link, error) {
 func (p *Postgres) list(ctx context.Context, q string, args ...any) ([]Link, error) {
 	rows, err := p.Pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, postgresError(err)
 	}
 	defer rows.Close()
 	links := make([]Link, 0)
@@ -88,5 +114,5 @@ func (p *Postgres) list(ctx context.Context, q string, args ...any) ([]Link, err
 		}
 		links = append(links, link)
 	}
-	return links, rows.Err()
+	return links, postgresError(rows.Err())
 }

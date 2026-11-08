@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/rand"
 	_ "embed"
 	"encoding/base64"
@@ -69,6 +70,9 @@ func NewWithBackend(s store.Store, base, backend string) (http.Handler, error) {
 	mux.HandleFunc("POST /links/{code}/click", a.click)
 	mux.HandleFunc("GET /analytics/popular", a.popular)
 	mux.HandleFunc("GET /health", a.health)
+	mux.HandleFunc("GET /health/live", a.live)
+	mux.HandleFunc("GET /health/ready", a.ready)
+	mux.HandleFunc("GET /health/serving", a.serving)
 	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	return a.instrument(mux), nil
 }
@@ -152,6 +156,10 @@ func handleError(w http.ResponseWriter, err error) {
 		return
 	}
 	log.Printf("storage error: %v", err)
+	if errors.Is(err, store.ErrUnavailable) {
+		writeError(w, http.StatusServiceUnavailable, "database unavailable")
+		return
+	}
 	writeError(w, 500, "internal server error")
 }
 func (a *API) create(w http.ResponseWriter, r *http.Request) {
@@ -259,10 +267,53 @@ func (a *API) popular(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, links)
 }
 func (a *API) health(w http.ResponseWriter, r *http.Request) {
-	if err := a.store.Health(r.Context()); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := a.store.Health(ctx); err != nil {
 		log.Printf("health: %v", err)
 		writeError(w, 503, "database unavailable")
 		return
 	}
 	respond(w, 200, map[string]string{"status": "ok", "storage": a.backend})
+}
+
+func (a *API) live(w http.ResponseWriter, r *http.Request) {
+	respond(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (a *API) ready(w http.ResponseWriter, r *http.Request)   { a.dependencyHealth(w, r, true) }
+func (a *API) serving(w http.ResponseWriter, r *http.Request) { a.dependencyHealth(w, r, false) }
+
+func (a *API) dependencyHealth(w http.ResponseWriter, r *http.Request, strict bool) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if checker, ok := a.store.(store.ShardHealthChecker); ok {
+		shards := checker.ShardHealth(ctx)
+		if len(shards) > 0 {
+			healthy := 0
+			for _, shard := range shards {
+				if shard.Healthy {
+					healthy++
+				}
+			}
+			status, code := "ok", http.StatusOK
+			if healthy == 0 || (strict && healthy != len(shards)) {
+				status, code = "unavailable", http.StatusServiceUnavailable
+			} else if healthy != len(shards) {
+				status = "degraded"
+			}
+			respond(w, code, struct {
+				Status  string              `json:"status"`
+				Storage string              `json:"storage"`
+				Shards  []store.ShardHealth `json:"shards"`
+			}{status, a.backend, shards})
+			return
+		}
+	}
+	if err := a.store.Health(ctx); err != nil {
+		log.Printf("health: %v", err)
+		respond(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable", "storage": a.backend})
+		return
+	}
+	respond(w, http.StatusOK, map[string]string{"status": "ok", "storage": a.backend})
 }

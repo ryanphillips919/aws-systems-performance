@@ -85,8 +85,19 @@ The first request returns HTTP 302 with a `Location` header and increments the c
 | `POST /links/{code}/click` | Explicitly increment a link's click count |
 | `GET /users/{userId}/links` | List a user's links, newest first |
 | `GET /analytics/popular` | List popular links (PostgreSQL backend) |
-| `GET /health` | Check service and selected database health |
+| `GET /health` | Backward-compatible strict database health check |
+| `GET /health/live` | Process liveness, independent of databases and Redis |
+| `GET /health/ready` | Strict readiness: all authoritative databases must be available |
+| `GET /health/serving` | Service availability: at least one shard must be available |
 | `GET /metrics` | Expose Prometheus metrics |
+
+## Health and failure behavior
+
+`/health/live` checks that the process can serve HTTP; it does not contact a dependency. `/health/ready` checks the selected authoritative backend, requiring every PostgreSQL shard in sharded mode. `/health/serving` reports `degraded` with HTTP 200 when some shards remain reachable, and HTTP 503 when none are reachable. Shard responses contain only configured shard identifiers and healthy flags. Redis is optional and never determines database readiness. Each dependency check has a two-second deadline. The existing `/health` retains its strict success and failure behavior.
+
+A partial shard outage can leave both application instances able to serve healthy-shard point requests, so strict readiness can remove all instances from a load balancer for a shared database fault. For a future ALB, `/health/serving` is a demonstration-oriented candidate when preserving that partial service matches the desired routing policy; assess endpoint mix, shared failures, ALB fail-open behavior, and operational requirements before choosing it. Process-only liveness cannot establish that an instance can serve database-backed traffic. Serving health does not guarantee that every endpoint or key will succeed.
+
+User listings and popularity rankings require every shard to produce complete results, so they fail closed when one is unavailable. Identified database connection failures return a generic HTTP 503, while unexpected internal errors remain HTTP 500; missing links and invalid requests remain 404 and 400. Logs and shard metrics identify failures without including database details in HTTP error responses.
 
 ## Explore the experiments
 
@@ -183,7 +194,7 @@ docker compose -p fanout-lab -f compose.yaml -f compose.shards.yaml -f compose.f
 python3 scripts/verify_fanout.py
 ```
 
-The [fan-out guide](experiments/06-fanout.md) includes k6 workloads, measured JSON and charts, a controlled shard outage and recovery, a probability simulation, and exam questions. The lab uses separate local ports and volumes; artificial delay is disabled by default and has no public control endpoint.
+The [fan-out guide](experiments/06-fanout.md) includes short-run measurements, a repeatable longer benchmark, a controlled shard outage and recovery, and a probability simulation. The roughly 25 requests per short run are insufficient to establish p99; longer measurements have not yet been collected in this environment. The lab uses separate local ports and volumes; artificial delay is disabled by default and has no public control endpoint.
 
 ## Configuration
 
@@ -239,6 +250,7 @@ The histogram-derived percentile is approximate. Client-side k6 latency and serv
 
 ```sh
 go test ./...
+go test -race ./...
 go vet ./...
 go build ./...
 ```

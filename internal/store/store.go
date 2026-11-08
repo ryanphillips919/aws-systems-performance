@@ -7,6 +7,18 @@ import (
 )
 
 var ErrNotFound = errors.New("link not found")
+var ErrUnavailable = errors.New("database unavailable")
+
+// ShardHealth reports only validated shard identifiers and availability.
+type ShardHealth struct {
+	ID      string `json:"id"`
+	Healthy bool   `json:"healthy"`
+}
+
+type ShardHealthChecker interface {
+	ShardHealth(context.Context) []ShardHealth
+}
+
 var ErrUnsupported = errors.New("operation unsupported by storage backend")
 
 type Link struct {

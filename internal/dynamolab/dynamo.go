@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -144,11 +145,25 @@ func waitForActive(ctx context.Context, table string, interval time.Duration, de
 	}
 }
 
+func dependencyError(err error) error {
+	var network net.Error
+	if err != nil && (errors.As(err, &network) || errors.Is(err, context.DeadlineExceeded)) {
+		return fmt.Errorf("%w: %w", store.ErrUnavailable, err)
+	}
+	return err
+}
+
 func (d *DB) Health(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err := d.Client.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(d.Table)})
-	return err
+	out, err := d.Client.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(d.Table)})
+	if err != nil {
+		return dependencyError(err)
+	}
+	if out.Table == nil || out.Table.TableStatus != types.TableStatusActive {
+		return fmt.Errorf("%w: table not active", store.ErrUnavailable)
+	}
+	return nil
 }
 func key(code string) map[string]types.AttributeValue {
 	return map[string]types.AttributeValue{"shortCode": &types.AttributeValueMemberS{Value: code}}
@@ -170,7 +185,7 @@ func (d *DB) Create(ctx context.Context, code, user, destination string) (store.
 	}
 	_, err = d.Client.PutItem(ctx, &dynamodb.PutItemInput{TableName: aws.String(d.Table), Item: m, ConditionExpression: aws.String("attribute_not_exists(shortCode)")})
 	if err != nil {
-		return store.Link{}, err
+		return store.Link{}, dependencyError(err)
 	}
 	return item.Link()
 }
@@ -179,7 +194,7 @@ func (d *DB) Get(ctx context.Context, code string) (store.Link, error) {
 	defer cancel()
 	out, err := d.Client.GetItem(ctx, &dynamodb.GetItemInput{TableName: aws.String(d.Table), Key: key(code), ConsistentRead: aws.Bool(true)})
 	if err != nil {
-		return store.Link{}, err
+		return store.Link{}, dependencyError(err)
 	}
 	if len(out.Item) == 0 {
 		return store.Link{}, store.ErrNotFound
@@ -195,7 +210,7 @@ func (d *DB) Click(ctx context.Context, code string) (store.Link, error) {
 		return store.Link{}, store.ErrNotFound
 	}
 	if err != nil {
-		return store.Link{}, err
+		return store.Link{}, dependencyError(err)
 	}
 	return decode(out.Attributes)
 }
@@ -207,7 +222,7 @@ func (d *DB) List(ctx context.Context, user string, limit int) ([]store.Link, er
 	for len(links) < limit {
 		out, err := d.Client.Query(ctx, &dynamodb.QueryInput{TableName: aws.String(d.Table), IndexName: aws.String(Index), KeyConditionExpression: aws.String("userId = :u"), ExpressionAttributeValues: map[string]types.AttributeValue{":u": &types.AttributeValueMemberS{Value: user}}, ScanIndexForward: aws.Bool(false), Limit: aws.Int32(int32(limit - len(links))), ExclusiveStartKey: next})
 		if err != nil {
-			return nil, err
+			return nil, dependencyError(err)
 		}
 		for _, item := range out.Items {
 			l, err := decode(item)

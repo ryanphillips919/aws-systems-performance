@@ -147,3 +147,11 @@ func (c *Store) Popular(ctx context.Context, limit int) ([]store.Link, error) {
 	return c.backend.Popular(ctx, limit)
 }
 func (c *Store) Health(ctx context.Context) error { return c.backend.Health(ctx) }
+
+// ShardHealth bypasses optional Redis and reports the authoritative backend.
+func (c *Store) ShardHealth(ctx context.Context) []store.ShardHealth {
+	if checker, ok := c.backend.(store.ShardHealthChecker); ok {
+		return checker.ShardHealth(ctx)
+	}
+	return nil
+}

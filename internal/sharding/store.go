@@ -3,7 +3,9 @@ package sharding
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -48,21 +50,30 @@ func (s *Store) Create(ctx context.Context, code, user, dest string) (store.Link
 	start := time.Now()
 	l, err := s.shards[id].Create(ctx, code, user, dest)
 	s.observe(id, "create", start, err)
-	return l, err
+	if err != nil {
+		return l, fmt.Errorf("shard %s: %w", id, err)
+	}
+	return l, nil
 }
 func (s *Store) Get(ctx context.Context, code string) (store.Link, error) {
 	id := s.placement.Owner(code)
 	start := time.Now()
 	l, err := s.shards[id].Get(ctx, code)
 	s.observe(id, "get", start, err)
-	return l, err
+	if err != nil {
+		return l, fmt.Errorf("shard %s: %w", id, err)
+	}
+	return l, nil
 }
 func (s *Store) Click(ctx context.Context, code string) (store.Link, error) {
 	id := s.placement.Owner(code)
 	start := time.Now()
 	l, err := s.shards[id].Click(ctx, code)
 	s.observe(id, "click", start, err)
-	return l, err
+	if err != nil {
+		return l, fmt.Errorf("shard %s: %w", id, err)
+	}
+	return l, nil
 }
 func (s *Store) collect(ctx context.Context, op string, user string, limit int) ([]store.Link, error) {
 	start := time.Now()
@@ -88,6 +99,7 @@ func (s *Store) collect(ctx context.Context, op string, user string, limit int) 
 			}
 			s.observe(id, op, started, err)
 			if err != nil {
+				log.Printf("shard %s %s: %v", id, op, err)
 				return fmt.Errorf("shard %s %s: %w", id, op, err)
 			}
 			parts[i] = links
@@ -138,4 +150,22 @@ func (s *Store) Health(ctx context.Context) error {
 		})
 	}
 	return g.Wait()
+}
+
+// ShardHealth checks every shard independently, even when another fails.
+func (s *Store) ShardHealth(ctx context.Context) []store.ShardHealth {
+	results := make([]store.ShardHealth, len(s.placement.IDs))
+	var wg sync.WaitGroup
+	for i, id := range s.placement.IDs {
+		wg.Add(1)
+		go func(i int, id string) {
+			defer wg.Done()
+			start := time.Now()
+			err := s.shards[id].Health(ctx)
+			s.observe(id, "health", start, err)
+			results[i] = store.ShardHealth{ID: id, Healthy: err == nil}
+		}(i, id)
+	}
+	wg.Wait()
+	return results
 }
