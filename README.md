@@ -204,6 +204,7 @@ The [fan-out guide](experiments/06-fanout.md) includes short-run measurements, a
 | `CACHE_ENABLED` | `false` | Enable Redis caching for link-detail reads |
 | `CACHE_TTL_SECONDS` | `60` | Lifetime of cached link records |
 | `CACHE_COALESCE` | `false` | Coalesce concurrent misses within one process |
+| `REDIS_TLS` | `false` | Use TLS for the configured Redis connection |
 | `PUBLIC_BASE_URL` | `http://localhost:8000` | Origin used when generating short URLs |
 | `POSTGRES_PORT` | `5433` | PostgreSQL host port |
 | `SHARD_IDS` | `shard1,shard2,shard3` | Ordered, stable shard identifiers |
@@ -270,12 +271,12 @@ Tests requiring external services are skipped when their environment variables a
 - **Explicit database access patterns:** PostgreSQL supports a global popularity query with an index. The current DynamoDB key design does not; `/analytics/popular` returns 501 in DynamoDB mode rather than disguising a table scan as a scalable implementation.
 - **Atomic click accounting:** PostgreSQL uses an atomic SQL update; DynamoDB uses a conditional atomic update. Redirects count before sending their HTTP response.
 - **Caching tradeoffs:** Link details may be stale after concurrent writes or cache fills. The database remains authoritative.
-- **Local-first environment:** This repository runs with Docker Compose. Its Terraform directory is currently a scaffold, not a deployed AWS environment.
+- **Local-first environment:** Docker Compose is the local environment. A separate [Terraform deployment guide](terraform/README.md) prepares an AWS experiment; it is not deployed by default.
 - **Benchmark interpretation:** Results depend on dataset, workload, machine, and caching conditions. Measurements from a local test are not claims about production scalability.
 
 ## Next steps
 
-Planned work includes longer fan-out and tail-latency experiments, richer benchmark reports, and a possible short-lived AWS deployment with multiple application instances, RDS, and shared caching. Any AWS deployment requires separate approval and a cost estimate within the project's $20 maximum budget, preferably below $5.
+Planned work includes longer fan-out and tail-latency experiments, richer benchmark reports, and a possible short-lived AWS deployment using the separate Terraform configuration. Any AWS deployment requires separate approval and a cost estimate within the project's $20 maximum budget, preferably below $5.
 
 ## Background
 

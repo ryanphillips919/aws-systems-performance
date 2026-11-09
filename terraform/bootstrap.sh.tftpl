@@ -1,0 +1,109 @@
+#!/bin/bash
+set -eu
+# Artifact checksums force replacement when a new local build is applied.
+# binary=${artifact_id} ca=${ca_id}
+install -d -m 0700 /etc/urlperf /run/urlperf
+cat > /etc/urlperf/config <<'CONFIG'
+AWS_DEFAULT_REGION=${region}
+ARTIFACT_BUCKET=${bucket}
+SECRET_ARN=${secret_arn}
+DB_HOST=${db_host}
+PUBLIC_BASE_URL=http://${alb_dns}
+CACHE_ENABLED=${cache}
+REDIS_ADDR=${redis_addr}
+CONFIG
+chmod 0600 /etc/urlperf/config
+id urlperf >/dev/null 2>&1 || useradd --system --no-create-home --shell /sbin/nologin urlperf
+cat > /usr/local/sbin/urlperf-install <<'INSTALL'
+#!/bin/bash
+set -eu
+. /etc/urlperf/config
+export AWS_DEFAULT_REGION
+install -d -m 0755 /opt/urlperf
+# Keep trying transient IAM, DNS and endpoint propagation failures.
+until aws s3 cp "s3://$ARTIFACT_BUCKET/api" /opt/urlperf/api.tmp --only-show-errors && aws s3 cp "s3://$ARTIFACT_BUCKET/global-bundle.pem" /opt/urlperf/ca.pem.tmp --only-show-errors; do sleep 10; done
+install -m 0755 /opt/urlperf/api.tmp /opt/urlperf/api
+install -m 0644 /opt/urlperf/ca.pem.tmp /opt/urlperf/ca.pem
+rm -f /opt/urlperf/api.tmp /opt/urlperf/ca.pem.tmp
+INSTALL
+cat > /usr/local/sbin/urlperf-configure <<'CONFIGURE'
+#!/bin/bash
+set -eu
+umask 077
+. /etc/urlperf/config
+export AWS_DEFAULT_REGION DB_HOST PUBLIC_BASE_URL CACHE_ENABLED REDIS_ADDR
+install -d -m 0700 /run/urlperf
+# The JSON and generated credentials stay in a root-only runtime file, not argv or user data.
+tmp=$(mktemp /run/urlperf/env.XXXXXXXX)
+trap 'rm -f "$tmp"' EXIT
+aws secretsmanager get-secret-value --secret-id "$SECRET_ARN" --query SecretString --output text | python3 -c '
+import json, os, sys, urllib.parse
+secret = json.load(sys.stdin)
+username = urllib.parse.quote(secret["username"], safe="")
+password = urllib.parse.quote(secret["password"], safe="")
+url = "postgresql://%s:%s@%s:5432/analytics?sslmode=verify-full&sslrootcert=/opt/urlperf/ca.pem" % (username, password, os.environ["DB_HOST"])
+print("DATABASE_URL=" + url)
+print("REDIS_TLS=true")
+for key in ("PUBLIC_BASE_URL", "CACHE_ENABLED", "REDIS_ADDR"):
+    print(key + "=" + os.environ[key])
+' > "$tmp"
+if ! cmp -s "$tmp" /run/urlperf/env; then mv -f "$tmp" /run/urlperf/env; fi
+CONFIGURE
+cat > /usr/local/sbin/urlperf-refresh <<'REFRESH'
+#!/bin/bash
+set -eu
+before=$(sha256sum /run/urlperf/env 2>/dev/null | cut -d ' ' -f 1 || true)
+/usr/local/sbin/urlperf-configure
+after=$(sha256sum /run/urlperf/env | cut -d ' ' -f 1)
+if [ "$before" != "$after" ]; then systemctl restart urlperf.service; fi
+REFRESH
+chmod 0755 /usr/local/sbin/urlperf-install /usr/local/sbin/urlperf-configure /usr/local/sbin/urlperf-refresh
+cat > /etc/systemd/system/urlperf-install.service <<'UNIT'
+[Unit]
+Description=Fetch URL shortener artifacts
+Wants=network-online.target
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/urlperf-install
+RemainAfterExit=yes
+UNIT
+cat > /etc/systemd/system/urlperf.service <<'UNIT'
+[Unit]
+Description=URL shortener API
+Requires=urlperf-install.service
+After=urlperf-install.service
+[Service]
+Type=simple
+User=urlperf
+EnvironmentFile=-/run/urlperf/env
+ExecStartPre=+/usr/local/sbin/urlperf-configure
+ExecStart=/opt/urlperf/api
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/systemd/system/urlperf-refresh.service <<'UNIT'
+[Unit]
+Description=Refresh RDS credentials when rotated
+After=urlperf.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/urlperf-refresh
+UNIT
+cat > /etc/systemd/system/urlperf-refresh.timer <<'UNIT'
+[Unit]
+Description=Check RDS secret for rotation
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now urlperf.service urlperf-refresh.timer

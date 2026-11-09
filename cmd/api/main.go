@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -142,7 +143,15 @@ func main() {
 		if addr == "" {
 			addr = "localhost:6379"
 		}
-		client := redis.NewClient(&redis.Options{Addr: addr, DialTimeout: 150 * time.Millisecond, ReadTimeout: 150 * time.Millisecond, WriteTimeout: 150 * time.Millisecond, PoolTimeout: 200 * time.Millisecond, MaxRetries: -1, ContextTimeoutEnabled: true})
+		redisTLS, err := boolEnv("REDIS_TLS", false)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var tlsConfig *tls.Config
+		if redisTLS {
+			tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		}
+		client := redis.NewClient(&redis.Options{TLSConfig: tlsConfig, Addr: addr, DialTimeout: 150 * time.Millisecond, ReadTimeout: 150 * time.Millisecond, WriteTimeout: 150 * time.Millisecond, PoolTimeout: 200 * time.Millisecond, MaxRetries: -1, ContextTimeoutEnabled: true})
 		defer client.Close()
 		db = cache.New(db, client, time.Duration(ttlSeconds)*time.Second, cacheNamespace, coalesce)
 		log.Printf("Redis cache enabled; ttl=%ds coalescing=%t", ttlSeconds, coalesce)

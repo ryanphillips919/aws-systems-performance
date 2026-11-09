@@ -19,3 +19,8 @@ coverage.out
 .aws/
 .codex/
 .agents/
+# Terraform deployment artifacts and local saved plans may contain sensitive data
+terraform/artifacts/
+*.tfplan
+*.tfplan.*
+.terraform.lock.hcl.tmp
