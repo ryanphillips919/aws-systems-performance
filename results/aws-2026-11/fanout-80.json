@@ -1,0 +1,31 @@
+{
+  "mode": "user",
+  "offered_rate_per_second": 80,
+  "configured_duration": "30s",
+  "code": "seed000006",
+  "user": "user001",
+  "elapsed_ms": 30002.89986,
+  "requests": {
+    "count": 2401,
+    "rate": 80.02559789898922
+  },
+  "achieved_requests_per_second": 80.02559789898922,
+  "latency_ms": {
+    "p(95)": 3.516893,
+    "p(99)": 11.324491,
+    "max": 98.236204,
+    "avg": 2.514010750104119,
+    "p(50)": 2.157932
+  },
+  "failed": {
+    "rate": 0,
+    "passes": 0,
+    "fails": 2401
+  },
+  "checks": {
+    "rate": 1,
+    "passes": 2401,
+    "fails": 0
+  },
+  "dropped_iterations": null
+}
