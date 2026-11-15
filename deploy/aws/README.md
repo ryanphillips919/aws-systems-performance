@@ -14,7 +14,7 @@ One AZ and one subnet, `10.42.0.0/24`:
 
 The infrastructure host is shared by the generator, proxy, cache, and monitoring. Watch its CPU and network; its contention can limit measurements. The API hosts do not run those services. All hosts are in one AZ, so this is not highly available. A host failure, an AZ outage, or Redis/infra failure affects the lab; fan-out requests require every shard. API startup requires all shards, even though an already-running API can serve healthy-shard point reads after a failure.
 
-Both APIs use the same ordered placement configuration and 10 pgx connections per shard. `shardseed` initializes the schema and placement metadata once before the API replicas start, then inserts 1,000 deterministic records. Existing records are retained, not reset. Use fresh volumes for comparable datasets. PostgreSQL, Redis, API metrics and Prometheus have no public ingress. Nginx listens on the infrastructure host private IP; k6 runs there. SSH is allowed only from the specified operator IPv4 /32. Each machine has a public IP for bootstrap downloads; restrict egress further if the environment provides a controlled artifact source.
+Both APIs use the same ordered placement configuration and 10 pgx connections per shard. `shardseed` initializes the schema and placement metadata once before the API replicas start, then inserts 1,000 deterministic records. Existing records are retained, not reset. Use fresh volumes for comparable datasets. PostgreSQL, Redis, API metrics and Prometheus have no public ingress. Nginx listens on the infrastructure host private IP; k6 runs there. The operator connects by SSH **directly to all six hosts**, each of which permits port 22 only from the specified operator IPv4 /32. There is no control-host-only SSH or jump-host restriction. Each machine has a public IP for bootstrap downloads; restrict egress further if the environment provides a controlled artifact source.
 
 This is an isolated HTTP, PostgreSQL without TLS, and unauthenticated Redis lab; use synthetic data and a trusted dedicated VPC. The PostgreSQL password is generated locally, sent over SSH, and stored in private `.env` files on API and database hosts. It is visible to privileged host and Docker users. The encrypted root volumes are deleted with instances. The provisioning script uses SSH trust-on-first-use: verify host keys independently when your threat model requires it. The public IPs expose only restricted SSH, but patch hosts and minimize their lifetime. Bootstrap downloads Docker Compose from GitHub without a pinned checksum; verify and pin the binary before using this in a higher-trust setting. Pin AMI and image digests for strict reproducibility; image version tags and the default latest AL2023 AMI can change.
 
@@ -26,7 +26,8 @@ Requirements: Go 1.24+, Docker Compose, Terraform >= 1.7. Terraform initializati
 
 ```sh
 go test ./...
-python3 -m py_compile deploy/aws/deploy.py deploy/aws/benchmark.py
+python3 -m py_compile deploy/aws/*.py
+python3 -m unittest discover -s deploy/aws -p 'test_*.py'
 terraform -chdir=terraform/distributed-lab init -backend=false
 terraform -chdir=terraform/distributed-lab fmt -check
 terraform -chdir=terraform/distributed-lab validate
@@ -67,7 +68,7 @@ python3 deploy/aws/deploy.py --outputs "$HOME/.distributed-benchmark/outputs.jso
   --password-file "$HOME/.distributed-benchmark/db-password" --key "$LAB_KEY"
 ```
 
-The deploy script generates the password once; keep this file for reruns with existing PostgreSQL volumes. Changing it does not rotate an initialized database password. It transfers source and selected deployment files, waits for cloud-init, starts the three databases, initializes/seeds through api1, then starts both APIs. It creates/builds containers and downloads images. For a clean repeated run, do not blindly rerun it over modified data or configurations: it resets the API environment to baseline. Record the exact Git commit and local changes used for the transfer.
+The deploy script generates the password once; keep this file for reruns with existing PostgreSQL volumes. Changing it does not rotate an initialized database password. It transfers source and selected deployment files, waits for cloud-init, starts the three databases, initializes/seeds through api1, then starts both APIs and checks their readiness and the private Nginx endpoint from infra. SSH connection failures are retried while instances boot; cloud-init errors still fail the run. It creates/builds containers and downloads images. For a clean repeated run, do not blindly rerun it over modified data or configurations: it resets the API environment to baseline. Record the exact Git commit and local changes used for the transfer.
 
 Use the public IPs in the protected output file to run the following on the infrastructure host via SSH. Both API replicas must return healthy and Prometheus must show two targets. Check shard counts using `docker compose -f compose.db.yaml exec postgres psql -U app -d analytics -c 'select count(*) from links'` on each shard host. `/health/serving` can be 200 when a shard is down; inspect the response body.
 
@@ -82,7 +83,7 @@ For a browser, tunnel from the operator workstation using the infrastructure hos
 
 ## Benchmark and delay experiment
 
-After separate authorization to load test, run from the operator workstation. The runner creates a new result directory, checks an explicit opt-in, limits rate and duration, runs k6 on infra against the fixed private Nginx endpoint, and captures both API metrics plus host/container statistics before and after. It does not create traffic to arbitrary URLs.
+After separate authorization to load test, run from the operator workstation. The runner creates a new result directory, checks an explicit opt-in, limits rate and duration, runs k6 on infra against Nginx using the private Compose network (`http://nginx:8080`), and captures both API metrics plus host/container statistics before and after. It reads each running API container’s actual cache, shard placement and delay settings without collecting database passwords, requires matching settings, and checks the containers and settings again after the run. A mismatch or restart invalidates the run. It does not create traffic to arbitrary URLs.
 
 ```sh
 ALLOW_PRIVATE_BENCHMARK=true python3 deploy/aws/benchmark.py \
@@ -90,17 +91,34 @@ ALLOW_PRIVATE_BENCHMARK=true python3 deploy/aws/benchmark.py \
   --output ./my-private-run --mode user --rate 5 --seconds 30
 ```
 
-Keep results outside Git. Capture instance types, AMI IDs, AZ, EBS sizes, image digests and CloudWatch CPU-credit balances separately, along with cache state, warmup, dataset counts and exact experiment settings. Inspect dropped iterations, achieved rate, errors and generator saturation. Repeated per-run p99s are not a pooled percentile. Run cache disabled for fan-out latency comparisons; Redis is configured but `CACHE_ENABLED=false` initially.
+Keep results outside Git. The `api-config-before.json` and `api-config-after.json` files record the actual running settings; `request-distribution.json` contains per-replica HTTP counter deltas for the selected workload routes. The runner fails if either replica receives no observed requests. These counters also include any concurrent traffic to those routes, so run in isolation; unequal counts can occur with short runs and connection reuse. Instance identity documents, image digests, shard counts and host stats are captured too. Record EBS sizes and warmup separately. Collect CloudWatch CPU credits as described below. Inspect dropped iterations, achieved rate, errors and generator saturation. Repeated per-run p99s are not a pooled percentile. Run cache disabled for fan-out latency comparisons; Redis is configured but `CACHE_ENABLED=false` initially.
 
-To inject delay, on **both API hosts** edit the protected `~/lab/deploy/aws/.env`, changing `FANOUT_LAB_ENABLED=false` to `true` and adding these exact lines:
+Use the following commands from the operator workstation to apply the same delay to both replicas, then restore the baseline. Do not change settings during a benchmark. Each command recreates the APIs sequentially and verifies their running settings; service is briefly interrupted. If either operation fails, the hosts may differ. The benchmark refuses mismatched settings; rerun `reset` and investigate before proceeding.
 
-```text
-FANOUT_PRIVATE_ALLOWED_IPS=10.42.0.13,10.42.0.14,10.42.0.15
-FANOUT_DELAY_SHARD=shard3
-FANOUT_DELAY_MS=200
+```sh
+python3 deploy/aws/delay.py --outputs "$HOME/.distributed-benchmark/outputs.json" --key "$LAB_KEY" set --shard shard3 --ms 200
+# After the experiment:
+python3 deploy/aws/delay.py --outputs "$HOME/.distributed-benchmark/outputs.json" --key "$LAB_KEY" reset
 ```
 
-Then recreate each API using `cd ~/lab/deploy/aws && docker compose -f compose.api.yaml up -d --force-recreate`. Verify each `/health/ready`, then run a new authorized benchmark. Injection affects reads on the selected shard in each API, is bounded at five seconds, and accepts only explicitly listed literal private IPv4 shard endpoints. There is no HTTP control endpoint. To restore baseline, remove the three added lines, set `FANOUT_LAB_ENABLED=false`, and recreate both APIs. Restarting resets process metrics; record that when comparing runs.
+Injection affects reads on the selected shard in each API, is bounded at five seconds, and accepts only explicitly listed literal private IPv4 shard endpoints. There is no HTTP control endpoint. Restarting resets process metrics; record that when comparing runs.
+
+### CPU credits
+
+After the run, use the instance IDs in `*-instance.json` and its UTC `metadata.json` window. CloudWatch reports T3 credit metrics at five-minute granularity; extend the window at least five minutes on either side and allow for publication delay. From the operator workstation, for **each of the six instance IDs**, replace the example timestamps and ID:
+
+```sh
+aws cloudwatch get-metric-statistics --namespace AWS/EC2 --metric-name CPUCreditBalance \
+  --dimensions Name=InstanceId,Value=i-REPLACE --start-time 2026-01-01T00:00:00Z \
+  --end-time 2026-01-01T00:30:00Z --period 300 --statistics Average \
+  --region "$AWS_REGION" > cpu-credit-balance-i-REPLACE.json
+aws cloudwatch get-metric-statistics --namespace AWS/EC2 --metric-name CPUSurplusCreditBalance \
+  --dimensions Name=InstanceId,Value=i-REPLACE --start-time 2026-01-01T00:00:00Z \
+  --end-time 2026-01-01T00:30:00Z --period 300 --statistics Average \
+  --region "$AWS_REGION" > cpu-surplus-balance-i-REPLACE.json
+```
+
+Record `CPUCreditUsage` with `--statistics Sum` for the same interval as well. CloudWatch data may arrive after the benchmark; an empty result does not mean zero. Credit balance and usage can affect both benchmark behavior and cost.
 
 For a separately authorized partial-failure demonstration, stop the postgres service on shard3 with `cd ~/lab/deploy/aws && docker compose -f compose.db.yaml stop postgres`. Verify shard3-dependent point reads and complete fan-out requests fail while a point read routed to a healthy shard may succeed, and inspect both health endpoints and metrics. Restart with `docker compose -f compose.db.yaml start postgres`, wait for readiness, and verify recovery. Avoid running writes or parallel experiments during comparison.
 

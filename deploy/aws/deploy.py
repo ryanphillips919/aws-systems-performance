@@ -8,6 +8,7 @@ from pathlib import Path
 import secrets
 import subprocess
 import tarfile
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 HOSTS = ['infra', 'api1', 'api2', 'shard1', 'shard2', 'shard3']
@@ -70,7 +71,15 @@ with tarfile.open(fileobj=buf, mode='w:gz') as tar:
 archive = buf.getvalue()
 for host in HOSTS:
     print('Preparing', host, flush=True)
-    ssh(host, 'cloud-init status --wait >/dev/null && mkdir -p ~/lab && tar xzf - -C ~/lab', archive)
+    # Fresh instances can accept TCP/SSH only after a short boot interval.
+    for attempt in range(30):
+        try:
+            ssh(host, 'cloud-init status --wait >/dev/null && mkdir -p ~/lab && tar xzf - -C ~/lab', archive)
+            break
+        except subprocess.CalledProcessError as exc:
+            if exc.returncode != 255 or attempt == 29:
+                raise
+            time.sleep(10)
     ssh(host, 'umask 077; cat > ~/lab/deploy/aws/.env', env_for(host).encode())
 for host in HOSTS[3:]:
     ssh(host, 'cd ~/lab/deploy/aws && docker compose -f compose.db.yaml up -d --wait')
@@ -78,4 +87,5 @@ ssh('infra', 'cd ~/lab/deploy/aws && docker compose -f compose.infra.yaml up -d'
 ssh('api1', 'cd ~/lab/deploy/aws && docker compose -f compose.api.yaml build && docker compose -f compose.api.yaml run --rm --no-deps api shardseed -count 1000')
 for host in ['api1', 'api2']:
     ssh(host, 'cd ~/lab/deploy/aws && docker compose -f compose.api.yaml up -d --build')
-print('Started. Verify both API health endpoints from infra before benchmarking.')
+ssh('infra', 'for url in http://10.42.0.11:8000/health/ready http://10.42.0.12:8000/health/ready http://10.42.0.10:8080/health/ready; do curl -fsS --retry 20 --retry-delay 3 --retry-all-errors --connect-timeout 2 "$url" || exit 1; done')
+print('Started. Both API readiness checks and the private proxy check passed.')
