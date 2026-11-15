@@ -2,7 +2,17 @@
 
 A Go URL shortener used to study how database placement, caching, and fan-out affect distributed application behavior. It runs locally with Docker Compose and was also deployed as a temporary six-instance AWS lab for controlled performance experiments.
 
-In the AWS smoke test, adding **200 ms of artificial delay to reads from one shard** raised average user-list latency from **2.44 ms to 202.63 ms**, while achieved throughput stayed near **20 requests/s**. This illustrates why a request that needs every shard can be dominated by its slowest dependency.
+In a controlled AWS benchmark, adding **200 ms of artificial delay to reads from one shard** raised average user-list latency from **2.44 ms to 202.63 ms**, while achieved throughput stayed near **20 requests/s**. This illustrates why a request that needs every shard can be dominated by its slowest dependency.
+
+## Project highlights
+
+- **Six EC2 instances:** two API replicas, three PostgreSQL shards, and one shared infrastructure host.
+- **100 requests/s:** highest offered rate tested; approximately 100 requests/s achieved with no observed HTTP failures.
+- **Approximately 83× average latency:** the delayed run averaged 202.63 ms versus 2.44 ms at baseline.
+
+![Average, p95, and p99 latency with and without the injected shard delay](docs/images/aws-slow-shard.png)
+
+These were short, approximately 30-second runs; the highest tested rate is not a throughput limit, and the delay was injected in the API's shard reads.
 
 ## Architecture
 
@@ -25,7 +35,7 @@ flowchart LR
 
 The AWS lab used **six `t3.small` EC2 instances in `us-east-2`**, all in one availability zone: one host for Nginx, k6, Prometheus and Redis; two dedicated API hosts; and one host per PostgreSQL shard. Redis was running, but application caching was disabled for these measurements. The infrastructure was destroyed after the experiments.
 
-Each short code is mapped to a shard using consistent hashing. The two API replicas use the same placement configuration, so either replica routes a code to the same owner. These are **application replicas**; the PostgreSQL shards hold different partitions and are not database replicas. A point read contacts one shard. A user listing or popularity query fans out to all three, merges the results, and fails if a required shard is unavailable rather than returning an incomplete answer.
+Each short code is mapped to a shard using consistent hashing. The two API replicas use the same placement configuration, so either replica routes a code to the same owner. These are **application replicas**; the PostgreSQL shards hold different partitions and are not database replicas. A point read contacts one shard. A user listing or popularity query fans out to all three and merges the results. The AWS benchmarks measured point reads and user listings; popularity was not measured in those runs. The implementation fails global queries if a required shard is unavailable rather than returning an incomplete answer; this behavior was exercised in a [separate local outage experiment](experiments/06-fanout.md), not in the AWS latency runs.
 
 **Stack:** Go, PostgreSQL, Redis, Nginx, Prometheus, k6, Docker Compose, Terraform and EC2. The local project also includes DynamoDB Local experiments.
 
@@ -49,6 +59,7 @@ The tests used 1,000 deterministic synthetic links, cache disabled, and k6's con
 | User-list baseline, 20 offered requests/s | 20.0 | 2.44 ms | 3.83 ms | 8.40 ms | 0% |
 | User list, shard 3 delayed 200 ms | 19.9 | 202.63 ms | 203.47 ms | 210.71 ms | 0% |
 | User list, 40 offered requests/s | 40.0 | 2.48 ms | 3.94 ms | 9.19 ms | 0% |
+| User list, 40 offered requests/s (additional run) | 40.0 | 2.47 ms | 3.64 ms | 8.38 ms | 0% |
 | User list, 60 offered requests/s | 60.0 | 2.17 ms | 2.45 ms | 3.02 ms | 0% |
 | User list, 80 offered requests/s | 80.0 | 2.51 ms | 3.52 ms | 11.32 ms | 0% |
 | User list, 100 offered requests/s | 100.0 | 2.14 ms | 2.42 ms | 2.97 ms | 0% |
@@ -56,8 +67,6 @@ The tests used 1,000 deterministic synthetic links, cache disabled, and k6's con
 | User list, 50 offered requests/s | 50.0 | 2.10 ms | 2.49 ms | 3.20 ms | 0% |
 
 ### One slow shard
-
-![Average, p95, and p99 latency with and without the injected shard delay](docs/images/aws-slow-shard.png)
 
 At 20 offered requests/s, both runs completed 601 requests with no HTTP failures. The injected delay illustrates the cost of waiting for a required slow shard. It is a controlled demonstration, not a measurement of an actual PostgreSQL failure.
 
@@ -77,9 +86,15 @@ These are different requests with different database work and response sizes. Th
 
 The [curated k6 summaries and methodology](results/aws-2026-11/README.md) include all nine runs, including both 40 requests/s observations, source mappings, limitations, and chart regeneration instructions. The original local benchmark folders are excluded from Git because they contain host and infrastructure details.
 
+### Monitoring shard activity
+
+This historical Prometheus view shows the rate of shard list operations during the lab. The query returned three shard series; the screenshot is context for the monitoring setup, not a substitute for the k6 latency measurements.
+
+![Prometheus query showing the rate of list operations grouped by shard](docs/images/prometheus-shard-activity.png)
+
 ## Engineering lessons
 
-- **Fan-out amplifies slow dependencies:** Complete cross-shard results wait for every required shard. Partial failures can leave healthy-shard point reads available while global queries fail.
+- **Fan-out amplifies slow dependencies:** The AWS delay test showed the effect of one slow shard. Partial-failure behavior was demonstrated separately in the local outage experiment.
 - **Placement is part of the data contract:** Both API replicas must agree on shard IDs and hashing settings. Changing placement requires a migration; it does not move existing rows automatically.
 - **Measurement conditions matter:** Offered and achieved rate, generator saturation, CPU credits, failure rate, and repetitions all matter when interpreting latency. A short successful run is not a capacity guarantee.
 - **Caching changes the experiment:** Redis is a best-effort optimization with possible stale reads. Separate local cache experiments exist, but caching was off in the AWS results above.

@@ -24,6 +24,7 @@ terraform/artifacts/
 *.tfplan
 *.tfplan.*
 .terraform.lock.hcl.tmp
+.vscode/extensions.json
 
 # Raw benchmark folders can contain infrastructure details
 /benchmark-*/

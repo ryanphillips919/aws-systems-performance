@@ -1,0 +1,46 @@
+{
+  "description": "AWS fan-out user-listing smoke tests; one run per condition.",
+  "rate_per_second": 20,
+  "duration_seconds": 30,
+  "cache_enabled": false,
+  "dataset_links": 1000,
+  "shard_counts": [
+    352,
+    323,
+    325
+  ],
+  "conditions": [
+    {
+      "label": "Baseline",
+      "delay_ms": 0,
+      "timestamp_utc": "2026-11-15T05:45:08.345219+00:00",
+      "request_count": 601,
+      "achieved_requests_per_second": 20.03075707884702,
+      "p50_ms": 2.221156,
+      "p95_ms": 3.834092,
+      "failure_rate": 0,
+      "checks_failed": 0,
+      "dropped_iterations": null,
+      "requests_per_api": {
+        "api1": 301.0,
+        "api2": 300.0
+      }
+    },
+    {
+      "label": "Shard 3 +200 ms",
+      "delay_ms": 200,
+      "timestamp_utc": "2026-11-15T05:56:58.096064+00:00",
+      "request_count": 601,
+      "achieved_requests_per_second": 19.898591425671665,
+      "p50_ms": 202.283464,
+      "p95_ms": 203.465398,
+      "failure_rate": 0,
+      "checks_failed": 0,
+      "dropped_iterations": null,
+      "requests_per_api": {
+        "api1": 300.0,
+        "api2": 301.0
+      }
+    }
+  ]
+}
