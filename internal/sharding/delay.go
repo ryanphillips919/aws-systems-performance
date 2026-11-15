@@ -4,6 +4,7 @@ import (
 	"aws-systems-performance/internal/store"
 	"context"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"time"
 )
@@ -27,6 +28,29 @@ func (s *Store) EnableLocalDelay(id string, delay time.Duration, urls []string) 
 			return fmt.Errorf("fan-out lab delay requires local shard endpoints")
 		}
 	}
+	return s.enableDelay(id, delay)
+}
+
+// EnablePrivateDelay permits only literal private IPv4 addresses explicitly listed
+// by the operator, in shard order. It must be called before serving.
+func (s *Store) EnablePrivateDelay(id string, delay time.Duration, urls, allowed []string) error {
+	if delay <= 0 || delay > 5*time.Second || len(urls) != len(s.placement.IDs) || len(allowed) != len(urls) {
+		return fmt.Errorf("invalid private fan-out lab configuration")
+	}
+	for i, raw := range urls {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return fmt.Errorf("invalid shard URL")
+		}
+		ip, err := netip.ParseAddr(u.Hostname())
+		if err != nil || !ip.Is4() || !ip.IsPrivate() || ip.String() != allowed[i] {
+			return fmt.Errorf("fan-out lab endpoint is not an explicitly allowed private IPv4 address")
+		}
+	}
+	return s.enableDelay(id, delay)
+}
+
+func (s *Store) enableDelay(id string, delay time.Duration) error {
 	target, ok := s.shards[id]
 	if !ok {
 		return fmt.Errorf("unknown fan-out lab shard %q", id)

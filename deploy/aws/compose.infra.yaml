@@ -1,0 +1,22 @@
+services:
+  nginx:
+    image: nginx:1.27.3-alpine
+    restart: unless-stopped
+    ports: ["${HOST_IP}:8080:8080"]
+    volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"]
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru", "--save", "", "--appendonly", "no"]
+    ports: ["${HOST_IP}:6379:6379"]
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    ports: ["127.0.0.1:9090:9090"]
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro", "prometheus:/prometheus"]
+  k6:
+    image: grafana/k6:0.54.0
+    profiles: [benchmark]
+    volumes: ["../../benchmarks:/benchmarks:ro"]
+volumes:
+  prometheus:

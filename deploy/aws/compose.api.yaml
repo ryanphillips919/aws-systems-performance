@@ -1,0 +1,7 @@
+services:
+  api:
+    build:
+      context: ../..
+    restart: unless-stopped
+    env_file: .env
+    ports: ["${HOST_IP}:8000:8000"]

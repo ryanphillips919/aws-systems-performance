@@ -100,3 +100,20 @@ func TestLabDelayAndMetrics(t *testing.T) {
 		t.Fatal("fan-out width missing")
 	}
 }
+
+func TestPrivateDelayRequiresExactPrivateAddresses(t *testing.T) {
+	p, _ := NewPlacement("modulo", []string{"a", "b", "c"}, 1, 1, "v1")
+	shards := map[string]store.Store{"a": &fake{}, "b": &fake{}, "c": &fake{}}
+	s, _ := NewStore(p, shards)
+	urls := []string{"postgres://10.42.0.13/db", "postgres://10.42.0.14/db", "postgres://10.42.0.15/db"}
+	if err := s.EnablePrivateDelay("b", time.Millisecond, urls, []string{"10.42.0.13", "10.42.0.14", "10.42.0.15"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnablePrivateDelay("b", time.Millisecond, urls, []string{"10.42.0.13", "10.42.0.99", "10.42.0.15"}); err == nil {
+		t.Fatal("accepted mismatched address")
+	}
+	urls[2] = "postgres://8.8.8.8/db"
+	if err := s.EnablePrivateDelay("b", time.Millisecond, urls, []string{"10.42.0.13", "10.42.0.14", "8.8.8.8"}); err == nil {
+		t.Fatal("accepted public address")
+	}
+}

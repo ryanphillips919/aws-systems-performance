@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -99,10 +100,16 @@ func main() {
 			log.Fatal("fan-out delay requires FANOUT_LAB_ENABLED=true")
 		}
 		if lab && delayMS > 0 {
-			if err := sharded.EnableLocalDelay(delayShard, time.Duration(delayMS)*time.Millisecond, urls); err != nil {
+			var delayErr error
+			if allowed := os.Getenv("FANOUT_PRIVATE_ALLOWED_IPS"); allowed != "" {
+				delayErr = sharded.EnablePrivateDelay(delayShard, time.Duration(delayMS)*time.Millisecond, urls, strings.Split(allowed, ","))
+			} else {
+				delayErr = sharded.EnableLocalDelay(delayShard, time.Duration(delayMS)*time.Millisecond, urls)
+			}
+			if err := delayErr; err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("local fan-out lab: adding %dms to %s reads", delayMS, delayShard)
+			log.Printf("fan-out lab: adding %dms to %s reads", delayMS, delayShard)
 		} else if delayShard != "" {
 			log.Fatal("FANOUT_DELAY_SHARD requires a positive FANOUT_DELAY_MS")
 		}
